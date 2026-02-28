@@ -1,7 +1,7 @@
 import { SharpSignalGame } from '@/actions/getSharpSignals';
 import { Card, CardContent, CardHeader, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { TrendingDown, Minus, Info, ArrowRight } from 'lucide-react';
+import { TrendingDown, Minus, Info, ArrowRight, Newspaper } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { AddToParlayButton } from '@/components/parlay/AddToParlayButton';
 
@@ -225,8 +225,66 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                     <span className="opacity-70">Pub. Side:</span>
                     <span className="font-medium capitalize">{game.public_sentiment_side}</span>
                 </div>
-                {game.home_rank && game.home_rank <= 25 && (
-                    <Badge variant="outline" className="text-[10px] h-5 cursor-default">Top 25 Matchup</Badge>
+                {isSharp && (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <button className="flex items-center gap-1 text-[10px] text-sky-400/70 hover:text-sky-400 transition-colors cursor-help">
+                                <Newspaper className="h-3 w-3" />
+                                <span className="hidden sm:inline">Insight</span>
+                            </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[280px] text-xs leading-relaxed p-3">
+                            <p className="font-semibold text-foreground mb-1.5">📊 Game Insight</p>
+                            <ul className="space-y-1 text-muted-foreground list-none">
+                                {(() => {
+                                    const insights: string[] = [];
+                                    const absDelta = Math.abs(game.spread_delta);
+                                    const sharpSpreadVal = sharpSide === 'home' ? game.current_spread : -game.current_spread;
+
+                                    // Spread movement strength
+                                    if (absDelta >= 2) {
+                                        insights.push(`🔥 Heavy sharp action — line moved ${absDelta} pts against public money. This is a strong RLM signal.`);
+                                    } else if (absDelta >= 1.5) {
+                                        insights.push(`📈 Solid line movement of ${absDelta} pts. Sharps are clearly positioned here.`);
+                                    } else {
+                                        insights.push(`📉 Line moved ${absDelta} pts — enough to flag reverse line movement.`);
+                                    }
+
+                                    // Ranked underdog getting points
+                                    const sharpRank = sharpSide === 'home' ? game.home_rank : game.away_rank;
+                                    const pubRank = sharpSide === 'home' ? game.away_rank : game.home_rank;
+                                    if (sharpRank && sharpRank <= 25 && sharpSpreadVal > 0) {
+                                        insights.push(`👑 Ranked #${sharpRank} team getting ${sharpSpreadVal} pts as an underdog — sharps love this spot.`);
+                                    } else if (sharpRank && sharpRank <= 25) {
+                                        insights.push(`👑 #${sharpRank} ${sharpTeam} backed by sharp money at ${sharpSpreadVal > 0 ? '+' : ''}${sharpSpreadVal}.`);
+                                    }
+
+                                    // Upset alert
+                                    if (pubRank && pubRank <= 25 && (!sharpRank || sharpRank > 25)) {
+                                        insights.push(`⚠️ Sharps fading ranked #${pubRank} team — potential upset brewing.`);
+                                    }
+
+                                    // Small underdog ML value
+                                    if (sharpSpreadVal > 0 && sharpSpreadVal <= 5) {
+                                        const sharpMLVal = sharpSide === 'home' ? game.moneyline_home : game.moneyline_away;
+                                        if (sharpMLVal && sharpMLVal > 1) {
+                                            const impliedProb = Math.round((1 / sharpMLVal) * 100);
+                                            insights.push(`💰 Small underdog with ${100 - impliedProb}% upset chance — plus-money ML offers great value.`);
+                                        }
+                                    }
+
+                                    // Big favorite context
+                                    if (sharpSpreadVal < -7) {
+                                        insights.push(`🎯 Large spread (${sharpSpreadVal}) — sharps believe this team covers convincingly.`);
+                                    }
+
+                                    return insights.map((insight, i) => (
+                                        <li key={i} className="text-[11px] leading-snug">{insight}</li>
+                                    ));
+                                })()}
+                            </ul>
+                        </TooltipContent>
+                    </Tooltip>
                 )}
             </CardFooter>
         </Card >
