@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 
 const POLL_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -9,8 +10,6 @@ export function AutoRefresh() {
     const [isFetching, setIsFetching] = useState(false);
 
     useEffect(() => {
-        // Don't fetch on mount — the server component already has fresh data.
-        // Only auto-fetch on the interval.
         const interval = setInterval(fetchOdds, POLL_INTERVAL_MS);
         return () => clearInterval(interval);
     }, []);
@@ -21,7 +20,6 @@ export function AutoRefresh() {
             const res = await fetch('/api/fetch-odds');
             if (res.ok) {
                 setLastSync(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
-                // Revalidate server data by refreshing
                 window.location.reload();
             }
         } catch (e) {
@@ -33,12 +31,15 @@ export function AutoRefresh() {
 
     return (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {isFetching && (
-                <span className="flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    Syncing...
-                </span>
-            )}
+            <button
+                onClick={fetchOdds}
+                disabled={isFetching}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 border border-border/50 text-foreground transition-colors disabled:opacity-50"
+                title="Refresh odds data"
+            >
+                <RefreshCw className={`h-3 w-3 ${isFetching ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline text-[10px] font-medium">{isFetching ? 'Syncing...' : 'Refresh'}</span>
+            </button>
             <span className="hidden sm:inline">
                 Last Sync: <strong className="text-foreground">{lastSync}</strong>
             </span>
