@@ -11,6 +11,9 @@ export interface SharpSignalGame {
     home_score: number | null;
     away_score: number | null;
     game_status: string | null; // 'upcoming', 'live', 'final'
+    signal_side: 'home' | 'away' | null;
+    confidence_score: number;
+    result_win: boolean | null;
     opening_spread: number;
     current_spread: number;
     spread_delta: number;
@@ -24,7 +27,11 @@ export interface SharpSignalGame {
     public_sentiment_side: string;
 }
 
-export async function getSharpSignals(filters?: { top25Only?: boolean; homeFavoritesOnly?: boolean }): Promise<SharpSignalGame[]> {
+export async function getSharpSignals(filters?: {
+    top25Only?: boolean;
+    homeFavoritesOnly?: boolean;
+    strongBetsOnly?: boolean;
+}): Promise<SharpSignalGame[]> {
     const supabase = await createClient();
 
     // Query games that have odds_snapshots.
@@ -47,6 +54,9 @@ export async function getSharpSignals(filters?: { top25Only?: boolean; homeFavor
       home_score,
       away_score,
       game_status,
+      signal_side,
+      confidence_score,
+      result_win,
       odds_snapshots (
         spread,
         spread_price,
@@ -145,6 +155,9 @@ export async function getSharpSignals(filters?: { top25Only?: boolean; homeFavor
                 home_score: (game as any).home_score ?? null,
                 away_score: (game as any).away_score ?? null,
                 game_status: (game as any).game_status ?? 'upcoming',
+                signal_side: (game as any).signal_side ?? null,
+                confidence_score: (game as any).confidence_score ?? 50,
+                result_win: (game as any).result_win ?? null,
                 opening_spread: openingSpread,
                 current_spread: currentSpread,
                 spread_delta: spreadDelta,
@@ -169,6 +182,10 @@ export async function getSharpSignals(filters?: { top25Only?: boolean; homeFavor
     if (filters?.homeFavoritesOnly) {
         // Assuming negative spread means home favorite
         filteredResults = filteredResults.filter(g => g.current_spread < 0);
+    }
+
+    if (filters?.strongBetsOnly) {
+        filteredResults = filteredResults.filter(g => g.confidence_score >= 80);
     }
 
     return filteredResults;

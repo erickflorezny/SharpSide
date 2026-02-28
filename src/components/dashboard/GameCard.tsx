@@ -78,7 +78,12 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                         const absDelta = Math.abs(game.spread_delta);
                         let label: string;
                         let badgeClass: string;
-                        if (absDelta >= 2) {
+
+                        // Confidence-based labeling
+                        if (game.confidence_score >= 85) {
+                            label = '🚀 Strong Bet';
+                            badgeClass = 'bg-amber-500/20 text-amber-400 border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.1)]';
+                        } else if (absDelta >= 2) {
                             label = '🔥 Strong RLM';
                             badgeClass = 'bg-orange-500/20 text-orange-400 border-orange-500/20';
                         } else if (absDelta >= 1.5) {
@@ -88,24 +93,53 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                             label = '📊 Sharp';
                             badgeClass = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20';
                         }
+
                         return (
-                            <div className="flex flex-col items-end gap-0.5">
-                                <Badge variant="default" className={`${badgeClass} hover:opacity-80 flex gap-1 items-center px-1.5 py-0 text-[10px]`}>
+                            <div className="flex flex-col items-end gap-1">
+                                <Badge variant="default" className={`${badgeClass} hover:opacity-80 flex gap-1 items-center px-1.5 py-0 text-[10px] font-bold`}>
                                     <span>{label}</span>
                                 </Badge>
-                                <span className="text-[9px] font-mono text-muted-foreground/60">Δ{absDelta} pts</span>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] font-mono text-muted-foreground/60">Δ{absDelta} pts</span>
+                                    {game.result_win !== null && (
+                                        <Badge variant="outline" className={`text-[8px] px-1 py-0 h-3 border-none ${game.result_win ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                                            {game.result_win ? 'SIGNAL HIT' : 'SIGNAL MISSED'}
+                                        </Badge>
+                                    )}
+                                </div>
                             </div>
                         );
                     })() : (
                         <Badge variant="secondary" className="bg-muted text-muted-foreground flex gap-1 items-center px-1.5 py-0">
                             <Minus className="h-3 w-3" />
-                            <span>Standard</span>
+                            Standard
                         </Badge>
                     )}
                 </div>
             </CardHeader>
 
-            <CardContent className="pb-3 text-sm space-y-3">
+            <CardContent className="space-y-4 pt-1">
+                {isSharp && (
+                    <div className="space-y-1.5 border-b border-border/30 pb-3 mb-2">
+                        <div className="flex justify-between items-end text-[10px] font-bold uppercase tracking-tighter">
+                            <span className="text-muted-foreground">Confidence Score</span>
+                            <span className={game.confidence_score >= 85 ? 'text-amber-400 animate-pulse' : 'text-zinc-400'}>
+                                {game.confidence_score}%
+                            </span>
+                        </div>
+                        <div className="h-1.5 w-full bg-zinc-800/50 rounded-full overflow-hidden border border-white/5">
+                            <div
+                                className={`h-full transition-all duration-1000 ease-out rounded-full ${game.confidence_score >= 85 ? 'bg-gradient-to-r from-amber-600 to-amber-400' :
+                                        game.confidence_score >= 70 ? 'bg-emerald-500' : 'bg-zinc-600'
+                                    }`}
+                                style={{ width: `${game.confidence_score}%` }}
+                            />
+                        </div>
+                        <p className="text-[9px] text-muted-foreground/50 leading-tight">
+                            Based on RLM magnitude, team rankings, and historical signal performance.
+                        </p>
+                    </div>
+                )}
                 {/* Spread Row */}
                 <div className="grid grid-cols-2 gap-4 mt-2">
                     <div className="flex flex-col border-r border-border/50">

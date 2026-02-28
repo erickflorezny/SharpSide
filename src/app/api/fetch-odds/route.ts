@@ -37,6 +37,43 @@ export async function GET() {
             // Use game.id from Odds API as external_id
             const teamsString = `${game.away_team} @ ${game.home_team}`;
 
+
+
+            // 2b. Extract Spread and ML
+            const bookmakers = game.bookmakers;
+            if (!bookmakers || bookmakers.length === 0) continue;
+
+            const primaryBookmaker = bookmakers.find((b: { key: string }) => b.key === 'pinnacle') || bookmakers[0];
+            const spreadMarket = primaryBookmaker.markets.find((m: { key: string }) => m.key === 'spreads');
+            if (!spreadMarket || !spreadMarket.outcomes || spreadMarket.outcomes.length === 0) continue;
+
+            const homeOutcome = spreadMarket.outcomes.find((o: { name: string }) => o.name === game.home_team);
+            if (!homeOutcome) continue;
+
+            const currentSpread = homeOutcome.point;
+            const spreadPrice = homeOutcome.price;
+
+            // 2c. Calculate Sharp Signal Side and Confidence Score
+            let signalSide: string | null = null;
+            let confidenceScore = 50;
+
+            // Get opening line if exists, otherwise use current
+            const openingSpread = game.odds_snapshots?.[0]?.spread ?? currentSpread;
+            const spreadDelta = currentSpread - openingSpread;
+
+            if (Math.abs(spreadDelta) >= 1.0) {
+                // Determine Sharp Side (opposite of public)
+                if (currentSpread < 0) {
+                    signalSide = spreadDelta > 0 ? 'away' : 'home';
+                } else {
+                    signalSide = spreadDelta > 0 ? 'home' : 'away';
+                }
+
+                // Initial Confidence Formula
+                confidenceScore += Math.floor(Math.abs(spreadDelta) * 15);
+                if (getTeamRank(game.home_team) || getTeamRank(game.away_team)) confidenceScore += 10;
+            }
+
             const { data: gameRecord, error: gameError } = await supabase
                 .from('games')
                 .upsert({
@@ -45,6 +82,9 @@ export async function GET() {
                     commence_time: game.commence_time,
                     home_rank: getTeamRank(game.home_team),
                     away_rank: getTeamRank(game.away_team),
+                    signal_side: signalSide,
+                    confidence_score: Math.min(99, confidenceScore),
+                    closing_spread: currentSpread
                 }, { onConflict: 'external_id' })
                 .select('id')
                 .single();
@@ -54,26 +94,6 @@ export async function GET() {
                 continue;
             }
             gamesInserted++;
-
-            // 2b. Insert Odds Snapshots
-            // Look for the main bookmakers (e.g., DraftKings, FanDuel, Pinnacle (sharp))
-            // For this scaffold, we'll take the first available bookmaker's spread to simplify.
-
-            const bookmakers = game.bookmakers;
-            if (!bookmakers || bookmakers.length === 0) continue;
-
-            // Prefer pinnacle if available, otherwise take the first
-            const primaryBookmaker = bookmakers.find((b: { key: string }) => b.key === 'pinnacle') || bookmakers[0];
-
-            const spreadMarket = primaryBookmaker.markets.find((m: { key: string }) => m.key === 'spreads');
-            if (!spreadMarket || !spreadMarket.outcomes || spreadMarket.outcomes.length === 0) continue;
-
-            // Find the spread for the home team (usually negative if favorite)
-            const homeOutcome = spreadMarket.outcomes.find((o: { name: string }) => o.name === game.home_team);
-            if (!homeOutcome) continue;
-
-            const currentSpread = homeOutcome.point;
-            const spreadPrice = homeOutcome.price; // juice/vig
 
             // Extract moneyline (h2h market)
             const h2hMarket = primaryBookmaker.markets.find((m: { key: string }) => m.key === 'h2h');

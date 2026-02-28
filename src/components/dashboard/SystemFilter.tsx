@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader } from '@/components/ui/sidebar';
-import { Target, Trophy, Flame, BookOpen } from 'lucide-react';
+import { Target, Trophy, Flame, BookOpen, Zap } from 'lucide-react';
 
 export function SystemFilter() {
     const router = useRouter();
@@ -14,6 +14,7 @@ export function SystemFilter() {
     const isOnDashboard = pathname === DASHBOARD_PATH;
     const isTop25 = searchParams.get('top25') === 'true';
     const isHomeFavs = searchParams.get('homeFavs') === 'true';
+    const isStrong = searchParams.get('strong') === 'true';
 
     const toggleFilter = (key: string, currentValue: boolean) => {
         const params = new URLSearchParams(searchParams);
@@ -41,7 +42,7 @@ export function SystemFilter() {
                         <SidebarMenu className="px-2 mt-2 gap-1">
                             <SidebarMenuItem>
                                 <SidebarMenuButton
-                                    isActive={isOnDashboard && !isTop25 && !isHomeFavs}
+                                    isActive={isOnDashboard && !isTop25 && !isHomeFavs && !isStrong}
                                     onClick={() => router.push(DASHBOARD_PATH)}
                                     className="w-full justify-start text-sm font-medium"
                                 >
@@ -49,6 +50,17 @@ export function SystemFilter() {
                                     All Sharp Actions
                                 </SidebarMenuButton>
                                 <p className="text-[10px] text-muted-foreground/60 px-8 pb-1 leading-tight">Every game with reverse line movement</p>
+                            </SidebarMenuItem>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton
+                                    isActive={isOnDashboard && isStrong}
+                                    onClick={() => toggleFilter('strong', isStrong)}
+                                    className="w-full justify-start text-sm font-medium text-amber-400 hover:text-amber-300"
+                                >
+                                    <Zap className="h-4 w-4 mr-2 fill-current" />
+                                    Strong Bets
+                                </SidebarMenuButton>
+                                <p className="text-[10px] text-muted-foreground/60 px-8 pb-1 leading-tight text-amber-500/60">High-confidence signals based on historical patterns</p>
                             </SidebarMenuItem>
                             <SidebarMenuItem>
                                 <SidebarMenuButton

@@ -12,10 +12,12 @@ export default async function DashboardPage({
     const resolvedParams = await searchParams;
     const isTop25 = resolvedParams.top25 === 'true';
     const isHomeFavs = resolvedParams.homeFavs === 'true';
+    const isStrong = resolvedParams.strong === 'true';
 
     const signals = await getSharpSignals({
         top25Only: isTop25,
         homeFavoritesOnly: isHomeFavs,
+        strongBetsOnly: isStrong,
     });
 
     return (

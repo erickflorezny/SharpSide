@@ -50,8 +50,27 @@ export async function GET() {
             if (gameStatus === 'upcoming') continue;
 
             // Match by team names in the "teams" column (format: "Away @ Home")
-            // Use ILIKE for flexible matching
             const matchPattern = `%${awayName}%${homeName}%`;
+
+            // First, find the game to get signal data
+            const { data: matchedGames } = await supabase
+                .from('games')
+                .select('id, signal_side, closing_spread')
+                .ilike('teams', matchPattern)
+                .limit(1);
+
+            const gameRecord = matchedGames?.[0];
+
+            let resultWin: boolean | null = null;
+            if (gameRecord && gameStatus === 'final' && gameRecord.signal_side && gameRecord.closing_spread !== null) {
+                const homeFinal = homeScore + gameRecord.closing_spread;
+                if (gameRecord.signal_side === 'home') {
+                    resultWin = homeFinal > awayScore;
+                } else {
+                    resultWin = awayScore > homeFinal;
+                }
+            }
+
             const { error } = await supabase
                 .from('games')
                 .update({
@@ -59,6 +78,7 @@ export async function GET() {
                     away_score: awayScore,
                     game_status: gameStatus,
                     last_score_update: new Date().toISOString(),
+                    result_win: resultWin
                 })
                 .ilike('teams', matchPattern);
 
