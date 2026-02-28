@@ -90,41 +90,57 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                     </div>
                 </div>
 
-                {/* Moneyline + Totals Row */}
-                <div className="grid grid-cols-2 gap-4 border-t border-border/20 pt-2">
-                    <div className="flex flex-col">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-mono mb-1">Moneyline</span>
-                        <div className="flex items-center gap-3 text-xs font-mono">
-                            <div className="flex flex-col">
-                                <span className="text-[9px] text-muted-foreground/70 truncate max-w-[80px]">{awayTeam.split(' ').pop()}</span>
-                                <span className={`font-medium ${game.moneyline_away && game.moneyline_away > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                                    {formatML(game.moneyline_away)}
-                                </span>
-                            </div>
-                            <span className="text-muted-foreground/30">|</span>
-                            <div className="flex flex-col">
-                                <span className="text-[9px] text-muted-foreground/70 truncate max-w-[80px]">{homeTeam.split(' ').pop()}</span>
-                                <span className={`font-medium ${game.moneyline_home && game.moneyline_home > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                                    {formatML(game.moneyline_home)}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex flex-col border-l border-border/50 pl-4">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-mono mb-1">Total</span>
-                        {game.total_points ? (
-                            <div className="flex flex-col text-xs font-mono">
-                                <span className="font-medium text-foreground">{game.total_points}</span>
-                                <div className="flex gap-2 text-[10px] text-muted-foreground">
-                                    <span>O {formatML(game.over_price)}</span>
-                                    <span>U {formatML(game.under_price)}</span>
+                {/* Moneyline + Win Probability */}
+                <div className="border-t border-border/20 pt-2">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-mono mb-2 block">Win Probability</span>
+                    {(() => {
+                        // Implied probability from decimal odds: prob = (1 / decimalOdds) * 100
+                        // Normalize so they sum to 100% (remove vig/juice)
+                        const rawAwayProb = game.moneyline_away ? (1 / game.moneyline_away) * 100 : 50;
+                        const rawHomeProb = game.moneyline_home ? (1 / game.moneyline_home) * 100 : 50;
+                        const total = rawAwayProb + rawHomeProb;
+                        const awayProb = Math.round((rawAwayProb / total) * 100);
+                        const homeProb = 100 - awayProb;
+
+                        return (
+                            <div className="space-y-1.5">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-muted-foreground/70 w-[60px] truncate font-mono">{awayTeam.split(' ').pop()}</span>
+                                    <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full rounded-full transition-all ${awayProb > homeProb ? 'bg-emerald-500' : 'bg-zinc-600'}`}
+                                            style={{ width: `${awayProb}%` }}
+                                        />
+                                    </div>
+                                    <span className={`text-xs font-mono font-bold w-10 text-right ${awayProb > homeProb ? 'text-emerald-400' : 'text-muted-foreground'}`}>{awayProb}%</span>
+                                    <span className="text-[10px] font-mono text-muted-foreground/50">{formatML(game.moneyline_away)}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-muted-foreground/70 w-[60px] truncate font-mono">{homeTeam.split(' ').pop()}</span>
+                                    <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full rounded-full transition-all ${homeProb > awayProb ? 'bg-emerald-500' : 'bg-zinc-600'}`}
+                                            style={{ width: `${homeProb}%` }}
+                                        />
+                                    </div>
+                                    <span className={`text-xs font-mono font-bold w-10 text-right ${homeProb > awayProb ? 'text-emerald-400' : 'text-muted-foreground'}`}>{homeProb}%</span>
+                                    <span className="text-[10px] font-mono text-muted-foreground/50">{formatML(game.moneyline_home)}</span>
                                 </div>
                             </div>
-                        ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                    </div>
+                        );
+                    })()}
                 </div>
+                {/* Over/Under Totals */}
+                {game.total_points && (
+                    <div className="flex items-center justify-between border-t border-border/20 pt-2">
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-mono">Total</span>
+                        <div className="flex items-center gap-2 text-xs font-mono">
+                            <span className="font-medium text-foreground">{game.total_points}</span>
+                            <span className="text-[10px] text-muted-foreground">O {formatML(game.over_price)}</span>
+                            <span className="text-[10px] text-muted-foreground">U {formatML(game.under_price)}</span>
+                        </div>
+                    </div>
+                )}
 
                 {/* Sharp Pick — the main actionable callout */}
                 {isSharp && (() => {
@@ -213,6 +229,6 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                     <Badge variant="outline" className="text-[10px] h-5 cursor-default">Top 25 Matchup</Badge>
                 )}
             </CardFooter>
-        </Card>
+        </Card >
     );
 }
