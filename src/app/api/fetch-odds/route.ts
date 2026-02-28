@@ -129,10 +129,50 @@ export async function GET() {
             }
         }
 
+        // 3. Fetch scores for live and recently completed games
+        let scoresUpdated = 0;
+        try {
+            const scoresResponse = await fetch(
+                `https://api.the-odds-api.com/v4/sports/basketball_ncaab/scores/?apiKey=${ODDS_API_KEY}&daysFrom=1`,
+                { next: { revalidate: 0 } }
+            );
+
+            if (scoresResponse.ok) {
+                const scoresData = await scoresResponse.json();
+                for (const scoreGame of scoresData) {
+                    if (!scoreGame.scores || scoreGame.scores.length === 0) continue;
+
+                    const homeScore = scoreGame.scores.find((s: { name: string }) => s.name === scoreGame.home_team);
+                    const awayScore = scoreGame.scores.find((s: { name: string }) => s.name === scoreGame.away_team);
+
+                    let gameStatus = 'upcoming';
+                    if (scoreGame.completed) {
+                        gameStatus = 'final';
+                    } else if (scoreGame.scores && scoreGame.scores.length > 0) {
+                        gameStatus = 'live';
+                    }
+
+                    const { error: scoreError } = await supabase
+                        .from('games')
+                        .update({
+                            home_score: homeScore ? parseInt(homeScore.score) : null,
+                            away_score: awayScore ? parseInt(awayScore.score) : null,
+                            game_status: gameStatus,
+                            last_score_update: new Date().toISOString(),
+                        })
+                        .eq('external_id', scoreGame.id);
+
+                    if (!scoreError) scoresUpdated++;
+                }
+            }
+        } catch (scoreErr) {
+            console.error('Scores fetch error:', scoreErr);
+        }
+
         return NextResponse.json({
             success: true,
-            message: 'Odds successfully fetched and updated in database.',
-            stats: { gamesProcessed: gamesInserted, oddsSnapshotsInserted: oddsInserted }
+            message: 'Odds and scores successfully fetched and updated.',
+            stats: { gamesProcessed: gamesInserted, oddsSnapshotsInserted: oddsInserted, scoresUpdated }
         });
 
     } catch (error: unknown) {

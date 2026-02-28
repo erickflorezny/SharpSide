@@ -8,6 +8,9 @@ export interface SharpSignalGame {
     commence_time: string;
     home_rank: number | null;
     away_rank: number | null;
+    home_score: number | null;
+    away_score: number | null;
+    game_status: string | null; // 'upcoming', 'live', 'final'
     opening_spread: number;
     current_spread: number;
     spread_delta: number;
@@ -37,6 +40,9 @@ export async function getSharpSignals(filters?: { top25Only?: boolean; homeFavor
       commence_time,
       home_rank,
       away_rank,
+      home_score,
+      away_score,
+      game_status,
       odds_snapshots (
         spread,
         spread_price,
@@ -99,6 +105,9 @@ export async function getSharpSignals(filters?: { top25Only?: boolean; homeFavor
                 commence_time: game.commence_time,
                 home_rank: game.home_rank,
                 away_rank: game.away_rank,
+                home_score: game.home_score ?? null,
+                away_score: game.away_score ?? null,
+                game_status: game.game_status ?? 'upcoming',
                 opening_spread: openingSpread,
                 current_spread: currentSpread,
                 spread_delta: spreadDelta,

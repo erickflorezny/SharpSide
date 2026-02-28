@@ -36,8 +36,17 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
             <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
                     <div>
-                        <CardDescription className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                        <CardDescription className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
                             {new Date(game.commence_time).toLocaleDateString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
+                            {game.game_status === 'live' && (
+                                <span className="flex items-center gap-1 text-[10px] text-red-400 font-bold">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+                                    LIVE
+                                </span>
+                            )}
+                            {game.game_status === 'final' && (
+                                <span className="text-[10px] text-muted-foreground/70 font-bold">FINAL</span>
+                            )}
                         </CardDescription>
                         <div className="mt-1 space-y-0.5 max-w-xs">
                             <div className="flex items-center gap-1.5 text-sm font-bold tracking-tight truncate">
@@ -45,6 +54,11 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                     <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0 leading-tight">#{game.away_rank}</span>
                                 )}
                                 <span className="truncate">{awayTeam}</span>
+                                {game.away_score !== null && game.away_score !== undefined && (
+                                    <span className={`ml-auto font-mono text-base ${game.game_status === 'final' && game.away_score > (game.home_score ?? 0) ? 'text-emerald-400' : 'text-foreground'}`}>
+                                        {game.away_score}
+                                    </span>
+                                )}
                             </div>
                             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                                 <span className="text-[10px]">@</span>
@@ -52,6 +66,11 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                     <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0 leading-tight">#{game.home_rank}</span>
                                 )}
                                 <span className="truncate">{homeTeam}</span>
+                                {game.home_score !== null && game.home_score !== undefined && (
+                                    <span className={`ml-auto font-mono text-base font-bold ${game.game_status === 'final' && (game.home_score ?? 0) > (game.away_score ?? 0) ? 'text-emerald-400' : 'text-foreground'}`}>
+                                        {game.home_score}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>
