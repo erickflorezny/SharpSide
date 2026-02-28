@@ -26,6 +26,9 @@ export async function getSharpSignals(filters?: { top25Only?: boolean; homeFavor
 
     // Query games that have odds_snapshots.
     // In a robust production environment, you would use a Postgres View or RPC to handle this logic efficiently.
+    // Show games from the last 6 hours onward (includes in-progress games)
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+
     const { data: games, error } = await supabase
         .from('games')
         .select(`
@@ -47,8 +50,7 @@ export async function getSharpSignals(filters?: { top25Only?: boolean; homeFavor
         timestamp
       )
     `)
-        // Ensure we only look at upcoming games
-        .gte('commence_time', new Date().toISOString())
+        .gte('commence_time', sixHoursAgo)
         .order('commence_time', { ascending: true });
 
     if (error) {
