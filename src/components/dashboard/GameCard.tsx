@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardDescription, CardFooter } from '@/co
 import { Badge } from '@/components/ui/badge';
 import { TrendingDown, Minus, Info, ArrowRight } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { AddToParlayButton } from '@/components/parlay/AddToParlayButton';
 
 export function GameCard({ game }: { game: SharpSignalGame }) {
     const isSharp = Math.abs(game.spread_delta) >= 1.0;
@@ -142,7 +143,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                     }
 
                     return (
-                        <div className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5 flex items-center gap-3">
+                        <div className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5 flex items-center gap-2">
                             <ArrowRight className="h-4 w-4 text-emerald-400 shrink-0" />
                             <div className="flex flex-col min-w-0">
                                 <span className="text-[10px] uppercase tracking-widest text-emerald-400/70 font-mono">Sharp Pick</span>
@@ -160,6 +161,27 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                     <p className="text-muted-foreground/70">Public is on {publicTeam}. Sharps are going the other way.</p>
                                 </TooltipContent>
                             </Tooltip>
+                            <AddToParlayButton leg={{
+                                gameId: game.id,
+                                teamName: sharpTeam,
+                                betType: suggestedBet === 'Take ML' ? 'ML' : 'Spread',
+                                line: suggestedBet === 'Take ML' ? formatML(sharpML) : suggestedValue,
+                                odds: (() => {
+                                    // The Odds API returns decimal odds (e.g. 1.91, 2.05)
+                                    // Convert to American: >= 2.0 → positive, < 2.0 → negative
+                                    const decOdds = suggestedBet === 'Take ML' && sharpML !== null
+                                        ? sharpML
+                                        : game.spread_price !== null
+                                            ? game.spread_price
+                                            : 1.91;
+                                    if (decOdds >= 2) {
+                                        return Math.round((decOdds - 1) * 100);
+                                    } else {
+                                        return Math.round(-100 / (decOdds - 1));
+                                    }
+                                })(),
+                                matchup: game.teams,
+                            }} />
                         </div>
                     );
                 })()}

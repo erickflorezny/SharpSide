@@ -48,6 +48,7 @@ export function SystemFilter() {
                                     <Flame className="h-4 w-4 mr-2" />
                                     All Sharp Actions
                                 </SidebarMenuButton>
+                                <p className="text-[10px] text-muted-foreground/60 px-8 pb-1 leading-tight">Every game with reverse line movement</p>
                             </SidebarMenuItem>
                             <SidebarMenuItem>
                                 <SidebarMenuButton
@@ -58,6 +59,7 @@ export function SystemFilter() {
                                     <Trophy className="h-4 w-4 mr-2" />
                                     Top 25 Matchups
                                 </SidebarMenuButton>
+                                <p className="text-[10px] text-muted-foreground/60 px-8 pb-1 leading-tight">Only games involving AP Top 25 teams</p>
                             </SidebarMenuItem>
                             <SidebarMenuItem>
                                 <SidebarMenuButton
@@ -68,6 +70,7 @@ export function SystemFilter() {
                                     <Target className="h-4 w-4 mr-2" />
                                     Home Favorites
                                 </SidebarMenuButton>
+                                <p className="text-[10px] text-muted-foreground/60 px-8 pb-1 leading-tight">Fade home favorites — sharps typically back the visiting underdog</p>
                             </SidebarMenuItem>
                         </SidebarMenu>
                     </SidebarGroupContent>
