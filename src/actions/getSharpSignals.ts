@@ -32,7 +32,11 @@ export async function getSharpSignals(filters?: { top25Only?: boolean; homeFavor
     // Show games from the last 6 hours onward (includes in-progress games)
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
 
-    const { data: games, error } = await supabase
+    let games;
+    let error;
+
+    // Try with score columns first, fall back without if migration hasn't run
+    const result = await supabase
         .from('games')
         .select(`
       id,
@@ -58,6 +62,39 @@ export async function getSharpSignals(filters?: { top25Only?: boolean; homeFavor
     `)
         .gte('commence_time', sixHoursAgo)
         .order('commence_time', { ascending: true });
+
+    if (result.error) {
+        // Fallback: query without score columns (migration not yet applied)
+        const fallback = await supabase
+            .from('games')
+            .select(`
+          id,
+          teams,
+          commence_time,
+          home_rank,
+          away_rank,
+          odds_snapshots (
+            spread,
+            spread_price,
+            moneyline_home,
+            moneyline_away,
+            total_points,
+            over_price,
+            under_price,
+            bookmaker,
+            is_opening_line,
+            timestamp
+          )
+        `)
+            .gte('commence_time', sixHoursAgo)
+            .order('commence_time', { ascending: true });
+
+        games = fallback.data;
+        error = fallback.error;
+    } else {
+        games = result.data;
+        error = result.error;
+    }
 
     if (error) {
         console.error("Error fetching signals from Supabase:", error);
@@ -105,9 +142,9 @@ export async function getSharpSignals(filters?: { top25Only?: boolean; homeFavor
                 commence_time: game.commence_time,
                 home_rank: game.home_rank,
                 away_rank: game.away_rank,
-                home_score: game.home_score ?? null,
-                away_score: game.away_score ?? null,
-                game_status: game.game_status ?? 'upcoming',
+                home_score: (game as any).home_score ?? null,
+                away_score: (game as any).away_score ?? null,
+                game_status: (game as any).game_status ?? 'upcoming',
                 opening_spread: openingSpread,
                 current_spread: currentSpread,
                 spread_delta: spreadDelta,
