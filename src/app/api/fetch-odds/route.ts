@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
+import { getTeamRank } from '@/lib/rankings';
 
 export async function GET() {
     try {
@@ -42,7 +43,8 @@ export async function GET() {
                     external_id: game.id,
                     teams: teamsString,
                     commence_time: game.commence_time,
-                    // Ranks could be enriched later via another API, leaving null for now.
+                    home_rank: getTeamRank(game.home_team),
+                    away_rank: getTeamRank(game.away_team),
                 }, { onConflict: 'external_id' })
                 .select('id')
                 .single();
