@@ -37,7 +37,21 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                         <CardDescription className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
                             {new Date(game.commence_time).toLocaleDateString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
                         </CardDescription>
-                        <div className="text-sm font-bold tracking-tight mt-1 truncate max-w-xs">{game.teams}</div>
+                        <div className="mt-1 space-y-0.5 max-w-xs">
+                            <div className="flex items-center gap-1.5 text-sm font-bold tracking-tight truncate">
+                                {game.away_rank && game.away_rank <= 25 && (
+                                    <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0 leading-tight">#{game.away_rank}</span>
+                                )}
+                                <span className="truncate">{awayTeam}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <span className="text-[10px]">@</span>
+                                {game.home_rank && game.home_rank <= 25 && (
+                                    <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0 leading-tight">#{game.home_rank}</span>
+                                )}
+                                <span className="truncate">{homeTeam}</span>
+                            </div>
+                        </div>
                     </div>
                     {isSharp ? (
                         <Badge variant="default" className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border-emerald-500/20 flex gap-1 items-center px-1.5 py-0">
