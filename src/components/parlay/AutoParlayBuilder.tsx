@@ -46,6 +46,7 @@ function rankSignals(signals: SharpSignalGame[]): RankedPick[] {
 
             // Bet type logic
             const sharpSpread = sharpSide === 'home' ? game.current_spread : -game.current_spread;
+            const absSpread = Math.abs(sharpSpread);
             const formatSpread = (s: number) => s > 0 ? `+${s}` : s.toString();
             const formatMLStr = (ml: number | null) => {
                 if (ml === null) return '';
@@ -70,9 +71,16 @@ function rankSignals(signals: SharpSignalGame[]): RankedPick[] {
                 odds = game.spread_price !== null ? decimalToAmerican(game.spread_price) : -110;
             }
 
-            return { game, sharpTeam, probability, betType, line, odds };
+            // Composite score: win probability minus a penalty for large spreads
+            // Spreads under 5 get no penalty, 5-10 get moderate, 10+ get heavy
+            const spreadPenalty = absSpread <= 5 ? 0 : absSpread <= 10 ? (absSpread - 5) * 2 : (absSpread - 5) * 4;
+            const score = probability - spreadPenalty;
+
+            return { game, sharpTeam, probability, betType, line, odds, absSpread, score };
         })
-        .sort((a, b) => b.probability - a.probability); // Highest probability first
+        // Filter out spreads larger than 10 points — too risky for parlays
+        .filter(pick => pick.absSpread <= 10)
+        .sort((a, b) => b.score - a.score); // Best composite score first
 }
 
 export function AutoParlayBuilder({ signals }: AutoParlayBuilderProps) {
@@ -107,7 +115,7 @@ export function AutoParlayBuilder({ signals }: AutoParlayBuilderProps) {
             <Sparkles className="h-4 w-4 text-amber-400 shrink-0" />
             <div className="flex flex-col min-w-0">
                 <span className="text-xs font-semibold text-foreground">Auto-Build Parlay</span>
-                <span className="text-[10px] text-muted-foreground">Picks the highest-probability sharp signals</span>
+                <span className="text-[10px] text-muted-foreground">Best odds, capped at 10pt spreads</span>
             </div>
             <div className="ml-auto flex items-center gap-2 shrink-0">
                 <div className="flex items-center bg-zinc-800 border border-border/50 rounded-md">
