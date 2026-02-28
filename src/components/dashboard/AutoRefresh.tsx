@@ -1,53 +1,112 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Zap, Activity } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
-const POLL_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+const ODDS_SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutes
+const SCORE_SYNC_INTERVAL = 60 * 1000;      // 60 seconds
 
 export function AutoRefresh() {
-    const [lastSync, setLastSync] = useState<string>('Just now');
-    const [isFetching, setIsFetching] = useState(false);
+    const router = useRouter();
+    const [lastOddsSync, setLastOddsSync] = useState<string>('Just now');
+    const [lastScoreSync, setLastScoreSync] = useState<string>('Just now');
+    const [isSyncingOdds, setIsSyncingOdds] = useState(false);
+    const [isSyncingScores, setIsSyncingScores] = useState(false);
 
+    // Initial sync
     useEffect(() => {
-        const interval = setInterval(fetchOdds, POLL_INTERVAL_MS);
-        return () => clearInterval(interval);
+        // We sync all once on mount
+        syncAll();
+
+        // 15-minute interval for Odds (credits)
+        const oddsTimer = setInterval(syncAll, ODDS_SYNC_INTERVAL);
+
+        // 60-second interval for Scores (free)
+        const scoreTimer = setInterval(syncScores, SCORE_SYNC_INTERVAL);
+
+        return () => {
+            clearInterval(oddsTimer);
+            clearInterval(scoreTimer);
+        };
     }, []);
 
-    async function fetchOdds() {
+    async function syncScores() {
         try {
-            setIsFetching(true);
-            // Fetch odds and scores in parallel — scores use free ESPN API
-            const [oddsRes, scoresRes] = await Promise.all([
-                fetch('/api/fetch-odds'),
-                fetch('/api/fetch-scores'),
-            ]);
-            if (oddsRes.ok || scoresRes.ok) {
-                setLastSync(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
-                window.location.reload();
+            setIsSyncingScores(true);
+            const res = await fetch('/api/fetch-scores');
+            if (res.ok) {
+                setLastScoreSync(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+                router.refresh();
             }
         } catch (e) {
-            console.error('Auto-refresh failed:', e);
+            console.error('Score sync failed:', e);
         } finally {
-            setIsFetching(false);
+            setIsSyncingScores(false);
+        }
+    }
+
+    async function syncAll() {
+        try {
+            setIsSyncingOdds(true);
+            setIsSyncingScores(true);
+
+            // Fetch both in parallel
+            const [oddsRes, scoresRes] = await Promise.all([
+                fetch('/api/fetch-odds'),
+                fetch('/api/fetch-scores')
+            ]);
+
+            if (oddsRes.ok || scoresRes.ok) {
+                const now = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                setLastOddsSync(now);
+                setLastScoreSync(now);
+                router.refresh();
+            }
+        } catch (e) {
+            console.error('Full sync failed:', e);
+        } finally {
+            setIsSyncingOdds(false);
+            setIsSyncingScores(false);
         }
     }
 
     return (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <button
-                onClick={fetchOdds}
-                disabled={isFetching}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 border border-border/50 text-foreground transition-colors disabled:opacity-50"
-                title="Refresh odds data"
-            >
-                <RefreshCw className={`h-3 w-3 ${isFetching ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline text-[10px] font-medium">{isFetching ? 'Syncing...' : 'Refresh'}</span>
-            </button>
-            <span className="hidden sm:inline">
-                Last Sync: <strong className="text-foreground">{lastSync}</strong>
-            </span>
-            <span className="text-muted-foreground/50 hidden sm:inline">· Auto every 15m</span>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6 bg-zinc-900/50 p-2 sm:p-2.5 rounded-xl border border-white/5 backdrop-blur-sm">
+            {/* Scores Sync Indicator */}
+            <div className="flex items-center gap-2">
+                <div className="relative flex items-center justify-center h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                </div>
+                <div className="flex flex-col">
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                        Scores Live
+                    </span>
+                    <span className="text-[9px] text-muted-foreground">Updated {lastScoreSync}</span>
+                </div>
+            </div>
+
+            {/* Separator */}
+            <div className="hidden sm:block h-6 w-px bg-white/10" />
+
+            {/* Odds Sync Status & Button */}
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+                <div className="flex flex-col mr-auto sm:mr-0">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Odds Snapshot</span>
+                    <span className="text-[9px] text-muted-foreground">{lastOddsSync}</span>
+                </div>
+
+                <button
+                    onClick={syncAll}
+                    disabled={isSyncingOdds}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-white/5 text-zinc-200 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 shadow-lg"
+                    title="Manual Deep Sync (Uses Odds API credits)"
+                >
+                    <RefreshCw className={`h-3 w-3 ${isSyncingOdds ? 'animate-spin text-emerald-400' : 'text-zinc-400'}`} />
+                    <span className="text-xs font-semibold">{isSyncingOdds ? 'Syncing...' : 'Sync Odds'}</span>
+                </button>
+            </div>
         </div>
     );
 }
