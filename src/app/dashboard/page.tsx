@@ -1,6 +1,7 @@
 import { getSharpSignals } from '@/actions/getSharpSignals';
 import { GameCard } from '@/components/dashboard/GameCard';
 import { AutoRefresh } from '@/components/dashboard/AutoRefresh';
+import { AutoParlayBuilder } from '@/components/parlay/AutoParlayBuilder';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 
 export default async function DashboardPage({
@@ -37,6 +38,8 @@ export default async function DashboardPage({
                         the betting line is moving against heavy public sentiment, often suggesting professional action.
                     </p>
                 </div>
+
+                <AutoParlayBuilder signals={signals} />
 
                 {signals.length === 0 ? (
                     <div className="flex flex-col items-center justify-center p-12 text-center border border-border/40 rounded-xl bg-muted/10 border-dashed">
