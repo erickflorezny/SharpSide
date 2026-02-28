@@ -2,8 +2,9 @@ import { SharpSignalGame } from '@/actions/getSharpSignals';
 import { Card, CardContent, CardHeader, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingDown, Minus, Info, ArrowRight, Newspaper } from 'lucide-react';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { AddToParlayButton } from '@/components/parlay/AddToParlayButton';
+import { generateInsights } from '@/lib/insights';
 
 export function GameCard({ game }: { game: SharpSignalGame }) {
     const isSharp = Math.abs(game.spread_delta) >= 1.0;
@@ -22,6 +23,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
     const sharpSide = game.public_sentiment_side === 'home' ? 'away' : 'home';
     const sharpTeam = sharpSide === 'home' ? homeTeam : awayTeam;
     const publicTeam = sharpSide === 'home' ? awayTeam : homeTeam;
+    const insights = isSharp ? generateInsights(game) : [];
 
     return (
         <Card className={`relative overflow-hidden transition-all duration-200 border shadow-sm ${isSharp ? 'border-emerald-500/30 bg-zinc-900/40' : 'border-border/50 bg-background hover:border-primary/50'}`}>
@@ -53,12 +55,29 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                             </div>
                         </div>
                     </div>
-                    {isSharp ? (
-                        <Badge variant="default" className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border-emerald-500/20 flex gap-1 items-center px-1.5 py-0">
-                            <TrendingDown className="h-3 w-3" />
-                            <span>Sharp</span>
-                        </Badge>
-                    ) : (
+                    {isSharp ? (() => {
+                        const absDelta = Math.abs(game.spread_delta);
+                        let label: string;
+                        let badgeClass: string;
+                        if (absDelta >= 2) {
+                            label = '🔥 Strong RLM';
+                            badgeClass = 'bg-orange-500/20 text-orange-400 border-orange-500/20';
+                        } else if (absDelta >= 1.5) {
+                            label = '⚡ Sharp';
+                            badgeClass = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20';
+                        } else {
+                            label = '📊 Sharp';
+                            badgeClass = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20';
+                        }
+                        return (
+                            <div className="flex flex-col items-end gap-0.5">
+                                <Badge variant="default" className={`${badgeClass} hover:opacity-80 flex gap-1 items-center px-1.5 py-0 text-[10px]`}>
+                                    <span>{label}</span>
+                                </Badge>
+                                <span className="text-[9px] font-mono text-muted-foreground/60">Δ{absDelta} pts</span>
+                            </div>
+                        );
+                    })() : (
                         <Badge variant="secondary" className="bg-muted text-muted-foreground flex gap-1 items-center px-1.5 py-0">
                             <Minus className="h-3 w-3" />
                             <span>Standard</span>
@@ -90,12 +109,10 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                     </div>
                 </div>
 
-                {/* Moneyline + Win Probability */}
+                {/* Win Probability */}
                 <div className="border-t border-border/20 pt-2">
                     <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-mono mb-2 block">Win Probability</span>
                     {(() => {
-                        // Implied probability from decimal odds: prob = (1 / decimalOdds) * 100
-                        // Normalize so they sum to 100% (remove vig/juice)
                         const rawAwayProb = game.moneyline_away ? (1 / game.moneyline_away) * 100 : 50;
                         const rawHomeProb = game.moneyline_home ? (1 / game.moneyline_home) * 100 : 50;
                         const total = rawAwayProb + rawHomeProb;
@@ -107,10 +124,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] text-muted-foreground/70 w-[60px] truncate font-mono">{awayTeam.split(' ').pop()}</span>
                                     <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                                        <div
-                                            className={`h-full rounded-full transition-all ${awayProb > homeProb ? 'bg-emerald-500' : 'bg-zinc-600'}`}
-                                            style={{ width: `${awayProb}%` }}
-                                        />
+                                        <div className={`h-full rounded-full transition-all ${awayProb > homeProb ? 'bg-emerald-500' : 'bg-zinc-600'}`} style={{ width: `${awayProb}%` }} />
                                     </div>
                                     <span className={`text-xs font-mono font-bold w-10 text-right ${awayProb > homeProb ? 'text-emerald-400' : 'text-muted-foreground'}`}>{awayProb}%</span>
                                     <span className="text-[10px] font-mono text-muted-foreground/50">{formatML(game.moneyline_away)}</span>
@@ -118,10 +132,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] text-muted-foreground/70 w-[60px] truncate font-mono">{homeTeam.split(' ').pop()}</span>
                                     <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                                        <div
-                                            className={`h-full rounded-full transition-all ${homeProb > awayProb ? 'bg-emerald-500' : 'bg-zinc-600'}`}
-                                            style={{ width: `${homeProb}%` }}
-                                        />
+                                        <div className={`h-full rounded-full transition-all ${homeProb > awayProb ? 'bg-emerald-500' : 'bg-zinc-600'}`} style={{ width: `${homeProb}%` }} />
                                     </div>
                                     <span className={`text-xs font-mono font-bold w-10 text-right ${homeProb > awayProb ? 'text-emerald-400' : 'text-muted-foreground'}`}>{homeProb}%</span>
                                     <span className="text-[10px] font-mono text-muted-foreground/50">{formatML(game.moneyline_home)}</span>
@@ -130,6 +141,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                         );
                     })()}
                 </div>
+
                 {/* Over/Under Totals */}
                 {game.total_points && (
                     <div className="flex items-center justify-between border-t border-border/20 pt-2">
@@ -144,16 +156,9 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
 
                 {/* Sharp Pick — the main actionable callout */}
                 {isSharp && (() => {
-                    // Determine the sharp team's effective spread
-                    // If sharp side is home, their spread is current_spread
-                    // If sharp side is away, their spread is -current_spread
                     const sharpSpread = sharpSide === 'home' ? game.current_spread : -game.current_spread;
                     const sharpML = sharpSide === 'home' ? game.moneyline_home : game.moneyline_away;
 
-                    // Bet suggestion logic:
-                    // Underdog (positive spread) with small spread (≤ 5): Take ML — they can win outright
-                    // Big underdog (> 5 pts): Take Spread — hard to win outright
-                    // Favorite (negative spread): Take Spread — ML juice on favorites is expensive
                     let suggestedBet: string;
                     let suggestedReason: string;
                     let suggestedValue: string;
@@ -182,23 +187,23 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                             <Badge className="ml-auto shrink-0 bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/25 font-mono text-[10px] px-2 py-0.5 cursor-default">
                                 {suggestedBet} {suggestedValue}
                             </Badge>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <div className="cursor-help shrink-0"><Info className="h-3.5 w-3.5 text-emerald-400/50 hover:text-emerald-400 transition-opacity" /></div>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-[260px] text-xs leading-relaxed">
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <button className="shrink-0 p-1 rounded-full hover:bg-zinc-800 transition-colors">
+                                        <Info className="h-3.5 w-3.5 text-emerald-400/50 hover:text-emerald-400 transition-opacity" />
+                                    </button>
+                                </PopoverTrigger>
+                                <PopoverContent side="top" className="max-w-[280px] text-xs leading-relaxed p-3">
                                     <p className="mb-1.5"><strong>{suggestedBet}:</strong> {suggestedReason}</p>
                                     <p className="text-muted-foreground/70">Public is on {publicTeam}. Sharps are going the other way.</p>
-                                </TooltipContent>
-                            </Tooltip>
+                                </PopoverContent>
+                            </Popover>
                             <AddToParlayButton leg={{
                                 gameId: game.id,
                                 teamName: sharpTeam,
                                 betType: suggestedBet === 'Take ML' ? 'ML' : 'Spread',
                                 line: suggestedBet === 'Take ML' ? formatML(sharpML) : suggestedValue,
                                 odds: (() => {
-                                    // The Odds API returns decimal odds (e.g. 1.91, 2.05)
-                                    // Convert to American: >= 2.0 → positive, < 2.0 → negative
                                     const decOdds = suggestedBet === 'Take ML' && sharpML !== null
                                         ? sharpML
                                         : game.spread_price !== null
@@ -211,6 +216,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                     }
                                 })(),
                                 matchup: game.teams,
+                                insights: insights,
                             }} />
                         </div>
                     );
@@ -226,67 +232,24 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                     <span className="font-medium capitalize">{game.public_sentiment_side}</span>
                 </div>
                 {isSharp && (
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <button className="flex items-center gap-1 text-[10px] text-sky-400/70 hover:text-sky-400 transition-colors cursor-help">
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <button className="flex items-center gap-1 text-[10px] text-sky-400/70 hover:text-sky-400 transition-colors px-2 py-1 rounded-md hover:bg-zinc-800/50">
                                 <Newspaper className="h-3 w-3" />
-                                <span className="hidden sm:inline">Insight</span>
+                                <span>Insight</span>
                             </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[280px] text-xs leading-relaxed p-3">
+                        </PopoverTrigger>
+                        <PopoverContent side="top" className="max-w-[280px] text-xs leading-relaxed p-3">
                             <p className="font-semibold text-foreground mb-1.5">📊 Game Insight</p>
                             <ul className="space-y-1 text-muted-foreground list-none">
-                                {(() => {
-                                    const insights: string[] = [];
-                                    const absDelta = Math.abs(game.spread_delta);
-                                    const sharpSpreadVal = sharpSide === 'home' ? game.current_spread : -game.current_spread;
-
-                                    // Spread movement strength
-                                    if (absDelta >= 2) {
-                                        insights.push(`🔥 Heavy sharp action — line moved ${absDelta} pts against public money. This is a strong RLM signal.`);
-                                    } else if (absDelta >= 1.5) {
-                                        insights.push(`📈 Solid line movement of ${absDelta} pts. Sharps are clearly positioned here.`);
-                                    } else {
-                                        insights.push(`📉 Line moved ${absDelta} pts — enough to flag reverse line movement.`);
-                                    }
-
-                                    // Ranked underdog getting points
-                                    const sharpRank = sharpSide === 'home' ? game.home_rank : game.away_rank;
-                                    const pubRank = sharpSide === 'home' ? game.away_rank : game.home_rank;
-                                    if (sharpRank && sharpRank <= 25 && sharpSpreadVal > 0) {
-                                        insights.push(`👑 Ranked #${sharpRank} team getting ${sharpSpreadVal} pts as an underdog — sharps love this spot.`);
-                                    } else if (sharpRank && sharpRank <= 25) {
-                                        insights.push(`👑 #${sharpRank} ${sharpTeam} backed by sharp money at ${sharpSpreadVal > 0 ? '+' : ''}${sharpSpreadVal}.`);
-                                    }
-
-                                    // Upset alert
-                                    if (pubRank && pubRank <= 25 && (!sharpRank || sharpRank > 25)) {
-                                        insights.push(`⚠️ Sharps fading ranked #${pubRank} team — potential upset brewing.`);
-                                    }
-
-                                    // Small underdog ML value
-                                    if (sharpSpreadVal > 0 && sharpSpreadVal <= 5) {
-                                        const sharpMLVal = sharpSide === 'home' ? game.moneyline_home : game.moneyline_away;
-                                        if (sharpMLVal && sharpMLVal > 1) {
-                                            const impliedProb = Math.round((1 / sharpMLVal) * 100);
-                                            insights.push(`💰 Small underdog with ${100 - impliedProb}% upset chance — plus-money ML offers great value.`);
-                                        }
-                                    }
-
-                                    // Big favorite context
-                                    if (sharpSpreadVal < -7) {
-                                        insights.push(`🎯 Large spread (${sharpSpreadVal}) — sharps believe this team covers convincingly.`);
-                                    }
-
-                                    return insights.map((insight, i) => (
-                                        <li key={i} className="text-[11px] leading-snug">{insight}</li>
-                                    ));
-                                })()}
+                                {insights.map((insight, i) => (
+                                    <li key={i} className="text-[11px] leading-snug">{insight}</li>
+                                ))}
                             </ul>
-                        </TooltipContent>
-                    </Tooltip>
+                        </PopoverContent>
+                    </Popover>
                 )}
             </CardFooter>
-        </Card >
+        </Card>
     );
 }

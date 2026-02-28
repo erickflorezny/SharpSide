@@ -9,6 +9,7 @@ export interface ParlayLeg {
     line: string;        // e.g. "+4.5" or "-110"
     odds: number;        // American odds, e.g. -110, +150
     matchup: string;     // e.g. "Liberty Flames @ Jacksonville St Gamecocks"
+    insights?: string[]; // Contextual game insights
 }
 
 interface ParlayContextType {

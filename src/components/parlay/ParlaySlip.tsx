@@ -5,7 +5,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTr
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { X, Ticket, Trash2 } from 'lucide-react';
+import { X, Ticket, Trash2, Newspaper } from 'lucide-react';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { useState } from 'react';
 
 function formatAmericanOdds(odds: number): string {
@@ -53,23 +54,44 @@ export function ParlaySlip() {
                         </div>
                     ) : (
                         legs.map((leg) => (
-                            <div key={leg.gameId} className="flex items-center gap-3 bg-zinc-900/60 border border-border/30 rounded-lg p-3">
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-xs text-muted-foreground truncate">{leg.matchup}</p>
-                                    <p className="text-sm font-semibold text-emerald-400 truncate">{leg.teamName}</p>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
-                                            {leg.betType === 'ML' ? 'ML' : `Spread ${leg.line}`}
-                                        </Badge>
-                                        <span className="text-xs font-mono text-amber-400">{formatAmericanOdds(leg.odds)}</span>
+                            <div key={leg.gameId} className="bg-zinc-900/60 border border-border/30 rounded-lg p-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs text-muted-foreground truncate">{leg.matchup}</p>
+                                        <p className="text-sm font-semibold text-emerald-400 truncate">{leg.teamName}</p>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                                                {leg.betType === 'ML' ? 'ML' : `Spread ${leg.line}`}
+                                            </Badge>
+                                            <span className="text-xs font-mono text-amber-400">{formatAmericanOdds(leg.odds)}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        {leg.insights && leg.insights.length > 0 && (
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <button className="text-sky-400/60 hover:text-sky-400 transition-colors p-1 rounded-md hover:bg-zinc-800/50">
+                                                        <Newspaper className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </PopoverTrigger>
+                                                <PopoverContent side="left" className="max-w-[260px] text-xs leading-relaxed p-3">
+                                                    <p className="font-semibold text-foreground mb-1.5">📊 Game Insight</p>
+                                                    <ul className="space-y-1 text-muted-foreground list-none">
+                                                        {leg.insights.map((insight, i) => (
+                                                            <li key={i} className="text-[11px] leading-snug">{insight}</li>
+                                                        ))}
+                                                    </ul>
+                                                </PopoverContent>
+                                            </Popover>
+                                        )}
+                                        <button
+                                            onClick={() => removeLeg(leg.gameId)}
+                                            className="text-muted-foreground/50 hover:text-rose-400 transition-colors p-1"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => removeLeg(leg.gameId)}
-                                    className="text-muted-foreground/50 hover:text-rose-400 transition-colors shrink-0 p-1"
-                                >
-                                    <X className="h-4 w-4" />
-                                </button>
                             </div>
                         ))
                     )}
