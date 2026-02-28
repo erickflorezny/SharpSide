@@ -17,8 +17,12 @@ export function AutoRefresh() {
     async function fetchOdds() {
         try {
             setIsFetching(true);
-            const res = await fetch('/api/fetch-odds');
-            if (res.ok) {
+            // Fetch odds and scores in parallel — scores use free ESPN API
+            const [oddsRes, scoresRes] = await Promise.all([
+                fetch('/api/fetch-odds'),
+                fetch('/api/fetch-scores'),
+            ]);
+            if (oddsRes.ok || scoresRes.ok) {
                 setLastSync(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
                 window.location.reload();
             }
