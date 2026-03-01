@@ -37,8 +37,11 @@ export default async function DashboardPage({
                     </span>
                 </div>
 
-                <div className="ml-auto flex items-center gap-4 text-xs text-muted-foreground mr-4">
-                    <span>Total Signals: <strong className="text-foreground">{signals.length}</strong></span>
+                <div className="ml-auto flex items-center gap-2 sm:gap-4 text-xs text-muted-foreground mr-4">
+                    <span className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span className="hidden sm:inline">Total Signals:</span>
+                        <strong className="text-foreground">{signals.length}</strong>
+                    </span>
                     <AutoRefresh />
                 </div>
             </header>

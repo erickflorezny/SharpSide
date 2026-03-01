@@ -102,16 +102,26 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
 
                         return (
                             <div className="flex flex-col items-end gap-1">
-                                <Badge variant="default" className={`${badgeClass} hover:opacity-80 flex gap-1 items-center px-1.5 py-0 text-[10px] font-bold`}>
-                                    <span>{label}</span>
-                                </Badge>
                                 <div className="flex items-center gap-1.5">
-                                    <span className="text-[9px] font-mono text-muted-foreground/60">Δ{absDelta} pts</span>
-                                    {game.result_win !== null && (
-                                        <Badge variant="outline" className={`text-[8px] px-1 py-0 h-3 border-none ${game.result_win ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} `}>
-                                            {game.result_win ? 'SIGNAL HIT' : 'SIGNAL MISSED'}
+                                    {game.game_status === 'final' && game.result_win !== null && (
+                                        <Badge
+                                            variant="outline"
+                                            className={`h-5 px-1.5 text-[9px] font-black uppercase tracking-tighter shadow-sm border-2 ${game.result_win
+                                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 fill-emerald-400'
+                                                : 'bg-rose-500/20 text-rose-400 border-rose-500/50 fill-rose-400'
+                                                }`}
+                                        >
+                                            <span className="flex items-center gap-1">
+                                                {game.result_win ? '✅ HIT' : '❌ MISSED'}
+                                            </span>
                                         </Badge>
                                     )}
+                                    <Badge variant="default" className={`${badgeClass} hover:opacity-80 flex gap-1 items-center px-1.5 py-0 text-[10px] font-bold h-5`}>
+                                        <span>{label}</span>
+                                    </Badge>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] font-mono text-muted-foreground/60">Δ{absDelta} pts</span>
                                 </div>
                             </div>
                         );
