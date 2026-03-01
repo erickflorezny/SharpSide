@@ -1,7 +1,7 @@
 import { SharpSignalGame } from '@/actions/getSharpSignals';
 import { Card, CardContent, CardHeader, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, Clock, Info, Shield, Award, Zap, ArrowRight, Newspaper, Minus } from 'lucide-react';
+import { Info, ArrowRight, Newspaper, Minus } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { AddToParlayButton } from '@/components/parlay/AddToParlayButton';
 import { generateInsights } from '@/lib/insights';
@@ -135,7 +135,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                         <div className="h-1.5 w-full bg-zinc-800/50 rounded-full overflow-hidden border border-white/5">
                             <div
                                 className={`h-full transition-all duration-1000 ease-out rounded-full ${game.confidence_score >= 85 ? 'bg-gradient-to-r from-amber-600 to-amber-400' :
-                                        game.confidence_score >= 70 ? 'bg-emerald-500' : 'bg-zinc-600'
+                                    game.confidence_score >= 70 ? 'bg-emerald-500' : 'bg-zinc-600'
                                     }                                    }`}
                                 style={{ width: `${game.confidence_score}%` }}
                             />

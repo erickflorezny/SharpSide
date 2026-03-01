@@ -117,12 +117,12 @@ export function AutoRefresh() {
 
                 <button
                     onClick={syncAll}
-                    disabled={isSyncingOdds}
+                    disabled={isSyncingOdds || isSyncingScores}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-white/5 text-zinc-200 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 shadow-lg"
                     title="Manual Deep Sync (Uses Odds API credits)"
                 >
-                    <RefreshCw className={`h-3 w-3 ${isSyncingOdds ? 'animate-spin text-emerald-400' : 'text-zinc-400'}`} />
-                    <span className="text-xs font-semibold">{isSyncingOdds ? 'Syncing...' : 'Sync Odds'}</span>
+                    <RefreshCw className={`h-3 w-3 ${(isSyncingOdds || isSyncingScores) ? 'animate-spin text-emerald-400' : 'text-zinc-400'}`} />
+                    <span className="text-xs font-semibold">{(isSyncingOdds || isSyncingScores) ? 'Syncing...' : 'Sync Odds'}</span>
                 </button>
 
                 <button

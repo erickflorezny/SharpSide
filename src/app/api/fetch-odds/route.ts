@@ -284,17 +284,80 @@ export async function GET() {
     }
 }
 
+// --- EXTERNAL API INTERFACES ---
+
+interface SportsDataIOOdds {
+    Sportsbook: string;
+    HomePointSpread: number | null;
+    HomePointSpreadPayout: number | null;
+    AwayPointSpread: number | null;
+    AwayPointSpreadPayout: number | null;
+    HomeMoneyLine: number | null;
+    AwayMoneyLine: number | null;
+    OverUnder: number | null;
+    OverPayout: number | null;
+    UnderPayout: number | null;
+}
+
+interface SportsDataIOGame {
+    GameID: number;
+    DateTime: string;
+    HomeTeamName: string;
+    AwayTeamName: string;
+    PregameOdds: SportsDataIOOdds[];
+}
+
+interface ApiSportsOutcome {
+    value: string;
+    odd: string;
+}
+
+interface ApiSportsBet {
+    name: string;
+    values: ApiSportsOutcome[];
+}
+
+interface ApiSportsBookmaker {
+    name: string;
+    bets: ApiSportsBet[];
+}
+
+interface ApiSportsGame {
+    game: { id: number; date: string };
+    teams: { home: { name: string }; away: { name: string } };
+    bookmakers: ApiSportsBookmaker[];
+}
+
+interface RundownLine {
+    spread?: { affiliate_home_odds: number; point_spread_home: number; affiliate_away_odds: number; point_spread_away: number };
+    moneyline?: { moneyline_home: number; moneyline_away: number };
+    total?: { total_over_odds: number; total_under_odds: number; total_over: number };
+}
+
+interface RundownTeam {
+    name: string;
+    is_home: boolean;
+}
+
+interface RundownEvent {
+    event_id: string;
+    event_date: string;
+    teams_normalized?: RundownTeam[];
+    teams?: { name: string }[];
+    lines?: Record<string, RundownLine>;
+}
+
 /**
  * Normalizes SportsDataIO CBB Odds data to match The Odds API structure
  */
-function mapSportsDataIOToStandard(response: any[]): StandardGame[] {
+function mapSportsDataIOToStandard(response: SportsDataIOGame[]): StandardGame[] {
     if (!Array.isArray(response)) {
         console.error("SportsDataIO returned non-array response:", response);
         return [];
     }
 
     return response.map(item => {
-        const bookmakers = (item.PregameOdds || []).map((odds: any) => {
+        const bookmakers = (item.PregameOdds || []).map((odds: SportsDataIOOdds) => {
             const markets: Market[] = [];
 
             if (!odds || !odds.Sportsbook) return null;
@@ -352,14 +415,14 @@ function mapSportsDataIOToStandard(response: any[]): StandardGame[] {
 /**
  * Normalizes API-Sports basketball odds data to match The Odds API structure
  */
-function mapApiSportsToStandard(response: any[]): StandardGame[] {
+function mapApiSportsToStandard(response: ApiSportsGame[]): StandardGame[] {
     if (!Array.isArray(response)) return [];
 
     return response.map(item => {
-        const bookmakers: Bookmaker[] = (item.bookmakers || []).map((b: any) => ({
+        const bookmakers: Bookmaker[] = (item.bookmakers || []).map((b: ApiSportsBookmaker) => ({
             key: b.name.toLowerCase().replace(/\s+/g, ''),
             title: b.name,
-            markets: (b.bets || []).map((bet: any) => {
+            markets: (b.bets || []).map((bet: ApiSportsBet) => {
                 let marketKey = '';
                 if (bet.name === 'Home/Away') marketKey = 'h2h';
                 if (bet.name === 'Handicap' || bet.name === 'Spread') marketKey = 'spreads';
@@ -367,7 +430,7 @@ function mapApiSportsToStandard(response: any[]): StandardGame[] {
 
                 return {
                     key: marketKey,
-                    outcomes: (bet.values || []).map((v: any) => {
+                    outcomes: (bet.values || []).map((v: ApiSportsOutcome) => {
                         const pointMatch = v.value.match(/([+-]?\d+\.?\d*)/);
                         const point = pointMatch ? parseFloat(pointMatch[1]) : null;
 
@@ -399,7 +462,7 @@ function mapApiSportsToStandard(response: any[]): StandardGame[] {
  * Normalizes TheRundown CBB Odds data to match The Odds API structure
  * Sport ID 5 is NCAAB
  */
-function mapTheRundownToStandard(events: any[]): StandardGame[] {
+function mapTheRundownToStandard(events: RundownEvent[]): StandardGame[] {
     if (!Array.isArray(events)) return [];
 
     return events.map(event => {
@@ -408,7 +471,7 @@ function mapTheRundownToStandard(events: any[]): StandardGame[] {
         // TheRundown provides lines by sportsbook ID in a lines object
         // 1: Pinnacle, 3: FanDuel, 7: DraftKings, etc.
         if (event.lines) {
-            for (const [sbId, line] of Object.entries(event.lines) as [string, any][]) {
+            for (const [sbId, line] of Object.entries(event.lines) as [string, RundownLine][]) {
                 const markets: Market[] = [];
 
                 // Spread
@@ -416,8 +479,8 @@ function mapTheRundownToStandard(events: any[]): StandardGame[] {
                     markets.push({
                         key: 'spreads',
                         outcomes: [
-                            { name: event.teams_normalized?.[0]?.name || event.teams?.[0]?.name, price: americanToDecimal(line.spread.affiliate_home_odds), point: line.spread.point_spread_home },
-                            { name: event.teams_normalized?.[1]?.name || event.teams?.[1]?.name, price: americanToDecimal(line.spread.affiliate_away_odds), point: line.spread.point_spread_away }
+                            { name: event.teams_normalized?.[0]?.name || event.teams?.[0]?.name || 'Home', price: americanToDecimal(line.spread.affiliate_home_odds), point: line.spread.point_spread_home },
+                            { name: event.teams_normalized?.[1]?.name || event.teams?.[1]?.name || 'Away', price: americanToDecimal(line.spread.affiliate_away_odds), point: line.spread.point_spread_away }
                         ]
                     });
                 }
@@ -427,8 +490,8 @@ function mapTheRundownToStandard(events: any[]): StandardGame[] {
                     markets.push({
                         key: 'h2h',
                         outcomes: [
-                            { name: event.teams_normalized?.[0]?.name || event.teams?.[0]?.name, price: americanToDecimal(line.moneyline.moneyline_home) },
-                            { name: event.teams_normalized?.[1]?.name || event.teams?.[1]?.name, price: americanToDecimal(line.moneyline.moneyline_away) }
+                            { name: event.teams_normalized?.[0]?.name || event.teams?.[0]?.name || 'Home', price: americanToDecimal(line.moneyline.moneyline_home) },
+                            { name: event.teams_normalized?.[1]?.name || event.teams?.[1]?.name || 'Away', price: americanToDecimal(line.moneyline.moneyline_away) }
                         ]
                     });
                 }
@@ -457,8 +520,8 @@ function mapTheRundownToStandard(events: any[]): StandardGame[] {
         return {
             id: `rundown-${event.event_id}`,
             commence_time: event.event_date,
-            home_team: event.teams_normalized?.find((t: any) => t.is_home)?.name || event.teams?.find((t: any) => t.is_home)?.name,
-            away_team: event.teams_normalized?.find((t: any) => !t.is_home)?.name || event.teams?.find((t: any) => !t.is_home)?.name,
+            home_team: event.teams_normalized?.find((t: RundownTeam) => t.is_home)?.name || event.teams?.[0]?.name || 'Unknown Home',
+            away_team: event.teams_normalized?.find((t: RundownTeam) => !t.is_home)?.name || event.teams?.[1]?.name || 'Unknown Away',
             bookmakers: bookmakers
         };
     });
