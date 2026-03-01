@@ -66,36 +66,43 @@ export async function GET() {
             const { data: matchedGames } = await supabase
                 .from('games')
                 .select('id, signal_side, closing_spread, teams')
-                .or(`teams.ilike.%${awaySearch}%${homeSearch}%,teams.ilike.%${awayName}%${homeName}%`)
-                .limit(1);
+                .or(`teams.ilike.%${awaySearch}%${homeSearch}%,teams.ilike.%${awayName}%${homeName}%`);
 
-            const gameRecord = matchedGames?.[0];
-            if (!gameRecord) continue;
+            if (!matchedGames || matchedGames.length === 0) continue;
 
-            let resultWin: boolean | null = null;
-            if (gameStatus === 'final' && gameRecord.signal_side && gameRecord.closing_spread !== null) {
-                // Adjust score by spread (CLOSING spread)
-                // If Bovada says -5, homeFinal = score - 5.
-                const homeAdjusted = homeScore + gameRecord.closing_spread;
-                if (gameRecord.signal_side === 'home') {
-                    resultWin = homeAdjusted > awayScore;
-                } else {
-                    resultWin = awayScore > homeAdjusted;
+            for (const gameRecord of matchedGames) {
+                let resultWin: boolean | null = null;
+
+                if (gameStatus === 'final' && gameRecord.signal_side && gameRecord.closing_spread !== null) {
+                    // resultWin = Did the SHARP side cover the spread?
+                    // closing_spread is always the HOME team's spread.
+
+                    if (gameRecord.signal_side === 'home') {
+                        // Sharp on Home. Home must cover.
+                        // SMC (Home) +5 vs Gonzaga. SMC 61, Gonzaga 62. 
+                        // 61 + 5 = 66. 66 > 62. Win!
+                        resultWin = (homeScore + gameRecord.closing_spread) > awayScore;
+                    } else {
+                        // Sharp on Away. Away must cover.
+                        // Gonzaga (Away) -5 vs SMC. Gonzaga 62, SMC 61.
+                        // 62 > 61 + 5. 62 > 66. Loss.
+                        resultWin = awayScore > (homeScore + gameRecord.closing_spread);
+                    }
                 }
+
+                const { error } = await supabase
+                    .from('games')
+                    .update({
+                        home_score: homeScore,
+                        away_score: awayScore,
+                        game_status: gameStatus,
+                        last_score_update: new Date().toISOString(),
+                        result_win: resultWin
+                    })
+                    .eq('id', gameRecord.id);
+
+                if (!error) updated++;
             }
-
-            const { error } = await supabase
-                .from('games')
-                .update({
-                    home_score: homeScore,
-                    away_score: awayScore,
-                    game_status: gameStatus,
-                    last_score_update: new Date().toISOString(),
-                    result_win: resultWin
-                })
-                .eq('id', gameRecord.id);
-
-            if (!error) updated++;
         }
 
         return NextResponse.json({

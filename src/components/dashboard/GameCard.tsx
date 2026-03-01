@@ -104,17 +104,43 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                             <div className="flex flex-col items-end gap-1">
                                 <div className="flex items-center gap-1.5">
                                     {game.game_status === 'final' && game.result_win !== null && (
-                                        <Badge
-                                            variant="outline"
-                                            className={`h-5 px-1.5 text-[9px] font-black uppercase tracking-tighter shadow-sm border-2 ${game.result_win
-                                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 fill-emerald-400'
-                                                : 'bg-rose-500/20 text-rose-400 border-rose-500/50 fill-rose-400'
-                                                }`}
-                                        >
-                                            <span className="flex items-center gap-1">
-                                                {game.result_win ? '✅ HIT' : '❌ MISSED'}
-                                            </span>
-                                        </Badge>
+                                        <Popover>
+                                            <PopoverTrigger asChild>
+                                                <Badge
+                                                    variant="outline"
+                                                    className={`h-5 px-1.5 text-[9px] font-black uppercase tracking-tighter shadow-sm border-2 cursor-help ${game.result_win
+                                                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50'
+                                                            : 'bg-rose-500/20 text-rose-400 border-rose-500/50'
+                                                        }`}
+                                                >
+                                                    <span className="flex items-center gap-1">
+                                                        {game.result_win ? '✅ HIT' : '❌ MISSED'}
+                                                    </span>
+                                                </Badge>
+                                            </PopoverTrigger>
+                                            <PopoverContent side="top" className="w-auto p-2 bg-zinc-950 border-zinc-800 shadow-2xl z-50">
+                                                <div className="flex flex-col gap-1 text-[10px] font-mono whitespace-nowrap">
+                                                    <div className="text-muted-foreground uppercase text-[8px] tracking-widest mb-1">Result Calculation</div>
+                                                    <div className="flex items-center justify-between gap-4">
+                                                        <span>{game.teams.split(' @ ')[1]} (Home)</span>
+                                                        <span className="font-bold text-foreground">{game.home_score}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between gap-4">
+                                                        <span>{game.teams.split(' @ ')[0]} (Away)</span>
+                                                        <span className="font-bold text-foreground">{game.away_score}</span>
+                                                    </div>
+                                                    <div className="h-px bg-zinc-800 my-1" />
+                                                    <div className="text-emerald-400 font-bold">
+                                                        Signal: {game.signal_side === 'home'
+                                                            ? `${game.teams.split(' @ ')[1]} (Home)`
+                                                            : `${game.teams.split(' @ ')[0]} (Away)`}
+                                                    </div>
+                                                    <div className="text-zinc-400 italic">
+                                                        Against Closing Spread
+                                                    </div>
+                                                </div>
+                                            </PopoverContent>
+                                        </Popover>
                                     )}
                                     <Badge variant="default" className={`${badgeClass} hover:opacity-80 flex gap-1 items-center px-1.5 py-0 text-[10px] font-bold h-5`}>
                                         <span>{label}</span>

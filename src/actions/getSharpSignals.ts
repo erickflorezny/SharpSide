@@ -140,7 +140,16 @@ export async function getSharpSignals(filters?: {
     const results: SharpSignalGame[] = [];
     const seenGames = new Set<string>();
 
-    for (const game of games || []) {
+    // Sort games to prioritize those with results/scores before deduplicating
+    const sortedGames = [...(games || [])].sort((a, b) => {
+        const aHasResult = a.result_win !== null || a.home_score !== null;
+        const bHasResult = b.result_win !== null || b.home_score !== null;
+        if (aHasResult && !bHasResult) return -1;
+        if (!aHasResult && bHasResult) return 1;
+        return 0;
+    });
+
+    for (const game of sortedGames) {
         // De-duplicate games (more robustly)
         const teamsParts = game.teams.toLowerCase().split(' @ ');
         const teamsNorm = teamsParts.sort().join('-').trim();
