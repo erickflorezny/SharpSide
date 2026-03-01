@@ -2,6 +2,31 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { getTeamRank } from '@/lib/rankings';
 
+interface Outcome {
+    name: string;
+    price: number;
+    point?: number | null;
+}
+
+interface Market {
+    key: string;
+    outcomes: Outcome[];
+}
+
+interface Bookmaker {
+    key: string;
+    title: string;
+    markets: Market[];
+}
+
+interface StandardGame {
+    id: string;
+    commence_time: string;
+    home_team: string;
+    away_team: string;
+    bookmakers: Bookmaker[];
+}
+
 export async function GET() {
     try {
         const ODDS_API_KEY = process.env.ODDS_API_KEY;
@@ -9,9 +34,9 @@ export async function GET() {
             return NextResponse.json({ error: 'ODDS_API_KEY is not configured.' }, { status: 500 });
         }
 
-        let data = [];
+        let data: StandardGame[] = [];
         let source = 'NONE';
-        let chainErrors: any[] = [];
+        const chainErrors: { provider: string; status?: number; details?: string; error?: string }[] = [];
 
         // --- STEP 1: The Odds API (Primary) ---
         const response = await fetch(`https://api.the-odds-api.com/v4/sports/basketball_ncaab/odds/?apiKey=${ODDS_API_KEY}&regions=us&markets=spreads,h2h,totals`, {
@@ -118,10 +143,10 @@ export async function GET() {
             .from('signal_weights')
             .select('category, weight');
 
-        const weights = (weightsData || []).reduce((acc: any, curr: any) => {
+        const weights = (weightsData || []).reduce((acc: Record<string, number>, curr: { category: string; weight: number }) => {
             acc[curr.category] = curr.weight;
             return acc;
-        }, {});
+        }, {} as Record<string, number>);
 
         // Defaults if weights table is empty
         const SPREAD_MULT = weights.spread_multiplier || 10;
@@ -138,27 +163,15 @@ export async function GET() {
             const bookmakers = game.bookmakers;
             if (!bookmakers || bookmakers.length === 0) continue;
 
-            const primaryBookmaker = bookmakers.find((b: { key: string }) => b.key === 'pinnacle') || bookmakers[0];
-            const spreadMarket = primaryBookmaker.markets.find((m: { key: string }) => m.key === 'spreads');
+            const primaryBookmaker = bookmakers.find((b: Bookmaker) => b.key === 'pinnacle') || bookmakers[0];
+            const spreadMarket = primaryBookmaker.markets.find((m: Market) => m.key === 'spreads');
             if (!spreadMarket || !spreadMarket.outcomes || spreadMarket.outcomes.length === 0) continue;
 
-            const homeOutcome = spreadMarket.outcomes.find((o: { name: string }) => o.name === game.home_team);
+            const homeOutcome = spreadMarket.outcomes.find((o: Outcome) => o.name === game.home_team);
             if (!homeOutcome) continue;
 
-            const currentSpread = homeOutcome.point;
+            const currentSpread = homeOutcome.point ?? 0;
             const spreadPrice = homeOutcome.price;
-
-            // Calculate Sharp Signal Side and Confidence Score
-            let signalSide: string | null = null;
-            let confidenceScore = 50;
-
-            // Simple heuristic for opening line if not provided in payload
-            // In a real app, you'd fetch the actual opening from a historical endpoint
-            const openingSpread = currentSpread; // Placeholder logic as the payload doesn't always have snapshots
-            const spreadDelta = 0; // Will be calculated after first snapshot is in DB
-
-            // Note: We'll let the backfill/update logic handle the delta calculation 
-            // once we have at least 2 snapshots in the DB.
 
             const { data: gameRecord, error: gameError } = await supabase
                 .from('games')
@@ -179,24 +192,24 @@ export async function GET() {
             gamesInserted++;
 
             // Extract moneyline (h2h market)
-            const h2hMarket = primaryBookmaker.markets.find((m: { key: string }) => m.key === 'h2h');
+            const h2hMarket = primaryBookmaker.markets.find((m: Market) => m.key === 'h2h');
             let mlHome: number | null = null;
             let mlAway: number | null = null;
             if (h2hMarket?.outcomes) {
-                const mlHomeOutcome = h2hMarket.outcomes.find((o: { name: string }) => o.name === game.home_team);
-                const mlAwayOutcome = h2hMarket.outcomes.find((o: { name: string }) => o.name === game.away_team);
+                const mlHomeOutcome = h2hMarket.outcomes.find((o: Outcome) => o.name === game.home_team);
+                const mlAwayOutcome = h2hMarket.outcomes.find((o: Outcome) => o.name === game.away_team);
                 mlHome = mlHomeOutcome?.price ?? null;
                 mlAway = mlAwayOutcome?.price ?? null;
             }
 
             // Extract totals
-            const totalsMarket = primaryBookmaker.markets.find((m: { key: string }) => m.key === 'totals');
+            const totalsMarket = primaryBookmaker.markets.find((m: Market) => m.key === 'totals');
             let totalPoints: number | null = null;
             let overPrice: number | null = null;
             let underPrice: number | null = null;
             if (totalsMarket?.outcomes) {
-                const overOutcome = totalsMarket.outcomes.find((o: { name: string }) => o.name === 'Over');
-                const underOutcome = totalsMarket.outcomes.find((o: { name: string }) => o.name === 'Under');
+                const overOutcome = totalsMarket.outcomes.find((o: Outcome) => o.name === 'Over');
+                const underOutcome = totalsMarket.outcomes.find((o: Outcome) => o.name === 'Under');
                 totalPoints = overOutcome?.point ?? null;
                 overPrice = overOutcome?.price ?? null;
                 underPrice = underOutcome?.price ?? null;
@@ -265,7 +278,7 @@ export async function GET() {
             stats: { gamesProcessed: gamesInserted, oddsSnapshotsInserted: oddsInserted }
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("CRITICAL API ERROR:", error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
@@ -274,7 +287,7 @@ export async function GET() {
 /**
  * Normalizes SportsDataIO CBB Odds data to match The Odds API structure
  */
-function mapSportsDataIOToStandard(response: any): any[] {
+function mapSportsDataIOToStandard(response: any[]): StandardGame[] {
     if (!Array.isArray(response)) {
         console.error("SportsDataIO returned non-array response:", response);
         return [];
@@ -282,7 +295,7 @@ function mapSportsDataIOToStandard(response: any): any[] {
 
     return response.map(item => {
         const bookmakers = (item.PregameOdds || []).map((odds: any) => {
-            const markets = [];
+            const markets: Market[] = [];
 
             if (!odds || !odds.Sportsbook) return null;
 
@@ -324,7 +337,7 @@ function mapSportsDataIOToStandard(response: any): any[] {
                 title: odds.Sportsbook,
                 markets: markets
             };
-        }).filter(Boolean);
+        }).filter((b: Bookmaker | null): b is Bookmaker => b !== null);
 
         return {
             id: `sportsdata-${item.GameID || Math.random()}`,
@@ -339,11 +352,11 @@ function mapSportsDataIOToStandard(response: any): any[] {
 /**
  * Normalizes API-Sports basketball odds data to match The Odds API structure
  */
-function mapApiSportsToStandard(response: any[]): any[] {
+function mapApiSportsToStandard(response: any[]): StandardGame[] {
     if (!Array.isArray(response)) return [];
 
     return response.map(item => {
-        const bookmakers = (item.bookmakers || []).map((b: any) => ({
+        const bookmakers: Bookmaker[] = (item.bookmakers || []).map((b: any) => ({
             key: b.name.toLowerCase().replace(/\s+/g, ''),
             title: b.name,
             markets: (b.bets || []).map((bet: any) => {
@@ -369,7 +382,7 @@ function mapApiSportsToStandard(response: any[]): any[] {
                         };
                     })
                 };
-            }).filter((m: any) => m.key !== '')
+            }).filter((m: Market) => m.key !== '')
         }));
 
         return {
@@ -386,17 +399,17 @@ function mapApiSportsToStandard(response: any[]): any[] {
  * Normalizes TheRundown CBB Odds data to match The Odds API structure
  * Sport ID 5 is NCAAB
  */
-function mapTheRundownToStandard(events: any[]): any[] {
+function mapTheRundownToStandard(events: any[]): StandardGame[] {
     if (!Array.isArray(events)) return [];
 
     return events.map(event => {
-        const bookmakers = [];
+        const bookmakers: Bookmaker[] = [];
 
         // TheRundown provides lines by sportsbook ID in a lines object
         // 1: Pinnacle, 3: FanDuel, 7: DraftKings, etc.
         if (event.lines) {
             for (const [sbId, line] of Object.entries(event.lines) as [string, any][]) {
-                const markets = [];
+                const markets: Market[] = [];
 
                 // Spread
                 if (line.spread) {
@@ -464,7 +477,7 @@ function getSportsbookName(id: string): string {
     return names[id] || `Sportsbook ${id}`;
 }
 
-function americanToDecimal(american: any): number {
+function americanToDecimal(american: string | number | null | undefined): number {
     if (american === null || american === undefined || american === 0) return 1.91;
     const odds = typeof american === 'string' ? parseFloat(american) : american;
     if (isNaN(odds)) return 1.91;

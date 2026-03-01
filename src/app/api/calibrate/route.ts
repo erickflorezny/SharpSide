@@ -75,8 +75,9 @@ export async function GET() {
             }
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Calibration Error:", error);
-        return NextResponse.json({ error: 'Calibration Fail', details: error.message }, { status: 500 });
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return NextResponse.json({ error: 'Calibration Fail', details: errorMessage }, { status: 500 });
     }
 }

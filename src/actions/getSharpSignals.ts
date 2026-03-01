@@ -27,6 +27,34 @@ export interface SharpSignalGame {
     public_sentiment_side: string;
 }
 
+interface RawSnapshot {
+    spread: number;
+    spread_price: number | null;
+    moneyline_home: number | null;
+    moneyline_away: number | null;
+    total_points: number | null;
+    over_price: number | null;
+    under_price: number | null;
+    bookmaker: string;
+    is_opening_line: boolean;
+    timestamp: string;
+}
+
+interface RawGame {
+    id: string;
+    teams: string;
+    commence_time: string;
+    home_rank: number | null;
+    away_rank: number | null;
+    home_score?: number | null;
+    away_score?: number | null;
+    game_status?: string | null;
+    signal_side?: 'home' | 'away' | null;
+    confidence_score?: number | null;
+    result_win?: boolean | null;
+    odds_snapshots: RawSnapshot[];
+}
+
 export async function getSharpSignals(filters?: {
     top25Only?: boolean;
     homeFavoritesOnly?: boolean;
@@ -35,11 +63,9 @@ export async function getSharpSignals(filters?: {
     const supabase = await createClient();
 
     // Query games that have odds_snapshots.
-    // In a robust production environment, you would use a Postgres View or RPC to handle this logic efficiently.
-    // Show games from the last 24 hours onward (includes in-progress and recently finished games)
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    let games;
+    let games: RawGame[] | null = null;
     let error;
 
     // Try with score columns first, fall back without if migration hasn't run
@@ -99,10 +125,10 @@ export async function getSharpSignals(filters?: {
             .gte('commence_time', twentyFourHoursAgo)
             .order('commence_time', { ascending: true });
 
-        games = fallback.data;
+        games = fallback.data as unknown as RawGame[];
         error = fallback.error;
     } else {
-        games = result.data;
+        games = result.data as unknown as RawGame[];
         error = result.error;
     }
 
@@ -115,8 +141,7 @@ export async function getSharpSignals(filters?: {
     const seenGames = new Set<string>();
 
     for (const game of games || []) {
-        // De-duplicate games (In case multiple providers return the same matchup)
-        // Normalize teams: "Away @ Home" -> "away-home" (sorted)
+        // De-duplicate games
         const teamsNorm = game.teams.split(' @ ').sort().join('-').toLowerCase().trim();
         const dateNorm = new Date(game.commence_time).toISOString().split('T')[0];
         const uniqueKey = `${teamsNorm}-${dateNorm}`;
@@ -129,7 +154,7 @@ export async function getSharpSignals(filters?: {
 
         // Sort snapshots by time
         const sortedSnapshots = [...game.odds_snapshots].sort(
-            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            (a: RawSnapshot, b: RawSnapshot) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
 
         const openingSnapshot = sortedSnapshots.find(s => s.is_opening_line) || sortedSnapshots[0];
@@ -155,7 +180,7 @@ export async function getSharpSignals(filters?: {
                 pubSide = spreadDelta > 0 ? 'away' : 'home';
             }
 
-            const gameStatus = (game as any).game_status ?? 'upcoming';
+            const gameStatus = game.game_status ?? 'upcoming';
             const startTime = new Date(game.commence_time).getTime();
             const now = Date.now();
 
@@ -171,12 +196,12 @@ export async function getSharpSignals(filters?: {
                 commence_time: game.commence_time,
                 home_rank: game.home_rank,
                 away_rank: game.away_rank,
-                home_score: (game as any).home_score ?? null,
-                away_score: (game as any).away_score ?? null,
+                home_score: game.home_score ?? null,
+                away_score: game.away_score ?? null,
                 game_status: gameStatus,
-                signal_side: (game as any).signal_side ?? null,
-                confidence_score: (game as any).confidence_score ?? 50,
-                result_win: (game as any).result_win ?? null,
+                signal_side: game.signal_side ?? null,
+                confidence_score: game.confidence_score ?? 50,
+                result_win: game.result_win ?? null,
                 opening_spread: openingSpread,
                 current_spread: currentSpread,
                 spread_delta: spreadDelta,

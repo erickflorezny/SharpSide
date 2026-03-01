@@ -21,13 +21,19 @@ export async function GET() {
         const events = data.events || [];
         let updated = 0;
 
+        interface Competitor {
+            homeAway: 'home' | 'away';
+            score: string;
+            team?: { displayName?: string };
+        }
+
         for (const event of events) {
             const competition = event.competitions?.[0];
             if (!competition) continue;
 
-            const competitors = competition.competitors || [];
-            const homeTeam = competitors.find((c: any) => c.homeAway === 'home');
-            const awayTeam = competitors.find((c: any) => c.homeAway === 'away');
+            const competitors: Competitor[] = competition.competitors || [];
+            const homeTeam = competitors.find((c: Competitor) => c.homeAway === 'home');
+            const awayTeam = competitors.find((c: Competitor) => c.homeAway === 'away');
             if (!homeTeam || !awayTeam) continue;
 
             const homeScore = parseInt(homeTeam.score) || 0;
@@ -36,7 +42,7 @@ export async function GET() {
             const awayName = awayTeam.team?.displayName || '';
 
             // Status: 'STATUS_SCHEDULED', 'STATUS_IN_PROGRESS', 'STATUS_FINAL', 'STATUS_FINAL_OT', 'STATUS_HALFTIME'
-            const statusType = event.status?.type?.name;
+            const statusType = event.status?.type?.name || '';
             let gameStatus = 'upcoming';
             if (statusType.includes('FINAL')) {
                 gameStatus = 'final';

@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { RefreshCw, Zap, Activity } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { RefreshCw, Activity } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 const ODDS_SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutes
@@ -16,24 +16,7 @@ export function AutoRefresh() {
     const [isCalibrating, setIsCalibrating] = useState(false);
     const [calibrationMsg, setCalibrationMsg] = useState<string>('System Tuned');
 
-    // Initial sync
-    useEffect(() => {
-        // We sync all once on mount
-        syncAll();
-
-        // 15-minute interval for Odds (credits)
-        const oddsTimer = setInterval(syncAll, ODDS_SYNC_INTERVAL);
-
-        // 60-second interval for Scores (free)
-        const scoreTimer = setInterval(syncScores, SCORE_SYNC_INTERVAL);
-
-        return () => {
-            clearInterval(oddsTimer);
-            clearInterval(scoreTimer);
-        };
-    }, []);
-
-    async function syncScores() {
+    const syncScores = useCallback(async () => {
         try {
             setIsSyncingScores(true);
             const res = await fetch('/api/fetch-scores');
@@ -46,25 +29,9 @@ export function AutoRefresh() {
         } finally {
             setIsSyncingScores(false);
         }
-    }
+    }, [router]);
 
-    async function calibrate() {
-        try {
-            setIsCalibrating(true);
-            const res = await fetch('/api/calibrate');
-            const data = await res.json();
-            if (data.success) {
-                setCalibrationMsg('Just Calibrated');
-                setTimeout(() => setCalibrationMsg('System Tuned'), 5000);
-            }
-        } catch (e) {
-            console.error('Calibration failed:', e);
-        } finally {
-            setIsCalibrating(false);
-        }
-    }
-
-    async function syncAll() {
+    const syncAll = useCallback(async () => {
         try {
             setIsSyncingOdds(true);
             setIsSyncingScores(true);
@@ -86,6 +53,39 @@ export function AutoRefresh() {
         } finally {
             setIsSyncingOdds(false);
             setIsSyncingScores(false);
+        }
+    }, [router]);
+
+    // Initial sync
+    useEffect(() => {
+        // We sync all once on mount
+        syncAll();
+
+        // 15-minute interval for Odds (credits)
+        const oddsTimer = setInterval(syncAll, ODDS_SYNC_INTERVAL);
+
+        // 60-second interval for Scores (free)
+        const scoreTimer = setInterval(syncScores, SCORE_SYNC_INTERVAL);
+
+        return () => {
+            clearInterval(oddsTimer);
+            clearInterval(scoreTimer);
+        };
+    }, [syncAll, syncScores]);
+
+    async function calibrate() {
+        try {
+            setIsCalibrating(true);
+            const res = await fetch('/api/calibrate');
+            const data = await res.json();
+            if (data.success) {
+                setCalibrationMsg('Just Calibrated');
+                setTimeout(() => setCalibrationMsg('System Tuned'), 5000);
+            }
+        } catch (e) {
+            console.error('Calibration failed:', e);
+        } finally {
+            setIsCalibrating(false);
         }
     }
 
@@ -132,7 +132,9 @@ export function AutoRefresh() {
                     title="Calibrate Weights (Analyzes past hits/misses)"
                 >
                     <Activity className={`h-3 w-3 ${isCalibrating ? 'animate-pulse' : ''}`} />
-                    <span className="text-xs font-semibold">{isCalibrating ? 'Tuning...' : 'Calibrate'}</span>
+                    <span className="text-xs font-semibold">
+                        {isCalibrating ? 'Tuning...' : calibrationMsg}
+                    </span>
                 </button>
             </div>
         </div>

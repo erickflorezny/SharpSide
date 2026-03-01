@@ -1,17 +1,17 @@
 import { SharpSignalGame } from '@/actions/getSharpSignals';
 import { Card, CardContent, CardHeader, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { TrendingDown, Minus, Info, ArrowRight, Newspaper } from 'lucide-react';
+import { TrendingUp, Clock, Info, Shield, Award, Zap, ArrowRight, Newspaper, Minus } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { AddToParlayButton } from '@/components/parlay/AddToParlayButton';
 import { generateInsights } from '@/lib/insights';
 
 export function GameCard({ game }: { game: SharpSignalGame }) {
     const isSharp = Math.abs(game.spread_delta) >= 1.0;
-    const formatSpread = (spread: number) => spread > 0 ? `+${spread}` : spread.toString();
+    const formatSpread = (spread: number) => spread > 0 ? `+ ${spread} ` : spread.toString();
     const formatML = (ml: number | null) => {
         if (ml === null) return '—';
-        return ml > 0 ? `+${ml}` : ml.toString();
+        return ml > 0 ? `+ ${ml} ` : ml.toString();
     };
 
     // Parse individual team names from "Away @ Home"
@@ -26,7 +26,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
     const insights = isSharp ? generateInsights(game) : [];
 
     return (
-        <Card className={`relative overflow-hidden transition-all duration-200 border shadow-sm ${isSharp ? 'border-emerald-500/30 bg-zinc-900/40' : 'border-border/50 bg-background hover:border-primary/50'}`}>
+        <Card className={`relative overflow-hidden transition-all duration-200 border shadow-sm ${isSharp ? 'border-emerald-500/30 bg-zinc-900/40' : 'border-border/50 bg-background hover:border-primary/50'} `}>
             {isSharp && (
                 <div className="absolute top-0 right-0 w-24 h-24 pointer-events-none">
                     <div className="absolute transform translate-x-10 -translate-y-10 rotate-45 w-24 h-24 bg-emerald-500/10 blur-2xl"></div>
@@ -55,7 +55,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                 )}
                                 <span className="truncate">{awayTeam}</span>
                                 {game.away_score !== null && game.away_score !== undefined && (
-                                    <span className={`ml-auto font-mono text-base ${game.game_status === 'final' && game.away_score > (game.home_score ?? 0) ? 'text-emerald-400' : 'text-foreground'}`}>
+                                    <span className={`ml-auto font-mono text-base ${game.game_status === 'final' && game.away_score > (game.home_score ?? 0) ? 'text-emerald-400' : 'text-foreground'} `}>
                                         {game.away_score}
                                     </span>
                                 )}
@@ -67,7 +67,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                 )}
                                 <span className="truncate">{homeTeam}</span>
                                 {game.home_score !== null && game.home_score !== undefined && (
-                                    <span className={`ml-auto font-mono text-base font-bold ${game.game_status === 'final' && (game.home_score ?? 0) > (game.away_score ?? 0) ? 'text-emerald-400' : 'text-foreground'}`}>
+                                    <span className={`ml-auto font-mono text-base font-bold ${game.game_status === 'final' && (game.home_score ?? 0) > (game.away_score ?? 0) ? 'text-emerald-400' : 'text-foreground'} `}>
                                         {game.home_score}
                                     </span>
                                 )}
@@ -102,7 +102,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                 <div className="flex items-center gap-1.5">
                                     <span className="text-[9px] font-mono text-muted-foreground/60">Δ{absDelta} pts</span>
                                     {game.result_win !== null && (
-                                        <Badge variant="outline" className={`text-[8px] px-1 py-0 h-3 border-none ${game.result_win ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                                        <Badge variant="outline" className={`text-[8px] px-1 py-0 h-3 border-none ${game.result_win ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'} `}>
                                             {game.result_win ? 'SIGNAL HIT' : 'SIGNAL MISSED'}
                                         </Badge>
                                     )}
@@ -135,8 +135,8 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                         <div className="h-1.5 w-full bg-zinc-800/50 rounded-full overflow-hidden border border-white/5">
                             <div
                                 className={`h-full transition-all duration-1000 ease-out rounded-full ${game.confidence_score >= 85 ? 'bg-gradient-to-r from-amber-600 to-amber-400' :
-                                    game.confidence_score >= 70 ? 'bg-emerald-500' : 'bg-zinc-600'
-                                    }`}
+                                        game.confidence_score >= 70 ? 'bg-emerald-500' : 'bg-zinc-600'
+                                    }                                    }`}
                                 style={{ width: `${game.confidence_score}%` }}
                             />
                         </div>
@@ -159,7 +159,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                 <span className="text-[10px] text-muted-foreground font-mono">({formatML(game.spread_price)})</span>
                             )}
                             {game.spread_delta !== 0 && (
-                                <span className={`text-xs ml-auto font-medium ${game.spread_delta > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                <span className={`text-xs ml-auto font-medium ${game.spread_delta > 0 ? 'text-rose-400' : 'text-emerald-400'} `}>
                                     {game.spread_delta > 0 ? '+' : ''}{game.spread_delta}
                                 </span>
                             )}
@@ -182,17 +182,17 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] text-muted-foreground/70 w-[60px] truncate font-mono">{awayTeam.split(' ').pop()}</span>
                                     <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                                        <div className={`h-full rounded-full transition-all ${awayProb > homeProb ? 'bg-emerald-500' : 'bg-zinc-600'}`} style={{ width: `${awayProb}%` }} />
+                                        <div className={`h-full rounded-full transition-all ${awayProb > homeProb ? 'bg-emerald-500' : 'bg-zinc-600'} `} style={{ width: `${awayProb}%` }} />
                                     </div>
-                                    <span className={`text-xs font-mono font-bold w-10 text-right ${awayProb > homeProb ? 'text-emerald-400' : 'text-muted-foreground'}`}>{awayProb}%</span>
+                                    <span className={`text-xs font-mono font-bold w-10 text-right ${awayProb > homeProb ? 'text-emerald-400' : 'text-muted-foreground'} `}>{awayProb}%</span>
                                     <span className="text-[10px] font-mono text-muted-foreground/50">{formatML(game.moneyline_away)}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] text-muted-foreground/70 w-[60px] truncate font-mono">{homeTeam.split(' ').pop()}</span>
                                     <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                                        <div className={`h-full rounded-full transition-all ${homeProb > awayProb ? 'bg-emerald-500' : 'bg-zinc-600'}`} style={{ width: `${homeProb}%` }} />
+                                        <div className={`h-full rounded-full transition-all ${homeProb > awayProb ? 'bg-emerald-500' : 'bg-zinc-600'} `} style={{ width: `${homeProb}%` }} />
                                     </div>
-                                    <span className={`text-xs font-mono font-bold w-10 text-right ${homeProb > awayProb ? 'text-emerald-400' : 'text-muted-foreground'}`}>{homeProb}%</span>
+                                    <span className={`text-xs font-mono font-bold w-10 text-right ${homeProb > awayProb ? 'text-emerald-400' : 'text-muted-foreground'} `}>{homeProb}%</span>
                                     <span className="text-[10px] font-mono text-muted-foreground/50">{formatML(game.moneyline_home)}</span>
                                 </div>
                             </div>
