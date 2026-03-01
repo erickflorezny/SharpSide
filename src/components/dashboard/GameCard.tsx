@@ -103,40 +103,58 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                         return (
                             <div className="flex flex-col items-end gap-1">
                                 <div className="flex items-center gap-1.5">
-                                    {game.game_status === 'final' && game.result_win !== null && (
+                                    {game.game_status === 'final' && (
                                         <Popover>
                                             <PopoverTrigger asChild>
                                                 <Badge
                                                     variant="outline"
-                                                    className={`h-5 px-1.5 text-[9px] font-black uppercase tracking-tighter shadow-sm border-2 cursor-help ${game.result_win
-                                                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50'
-                                                            : 'bg-rose-500/20 text-rose-400 border-rose-500/50'
+                                                    className={`h-5 px-1.5 text-[9px] font-black uppercase tracking-tighter shadow-sm border-2 cursor-help ${game.result_win === true
+                                                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50'
+                                                        : game.result_win === false
+                                                            ? 'bg-rose-500/20 text-rose-400 border-rose-500/50'
+                                                            : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/50'
                                                         }`}
                                                 >
                                                     <span className="flex items-center gap-1">
-                                                        {game.result_win ? '✅ HIT' : '❌ MISSED'}
+                                                        {game.result_win === true ? '✅ HIT' : game.result_win === false ? '❌ MISSED' : '➖ PUSH'}
                                                     </span>
                                                 </Badge>
                                             </PopoverTrigger>
-                                            <PopoverContent side="top" className="w-auto p-2 bg-zinc-950 border-zinc-800 shadow-2xl z-50">
-                                                <div className="flex flex-col gap-1 text-[10px] font-mono whitespace-nowrap">
-                                                    <div className="text-muted-foreground uppercase text-[8px] tracking-widest mb-1">Result Calculation</div>
-                                                    <div className="flex items-center justify-between gap-4">
-                                                        <span>{game.teams.split(' @ ')[1]} (Home)</span>
-                                                        <span className="font-bold text-foreground">{game.home_score}</span>
+                                            <PopoverContent side="top" className="w-[220px] p-3 bg-zinc-950/95 border-zinc-800 shadow-2xl z-50 backdrop-blur-xl">
+                                                <div className="flex flex-col gap-2.5 text-[10px] font-mono">
+                                                    <div className="flex items-center justify-between border-b border-white/5 pb-1.5">
+                                                        <span className="text-muted-foreground uppercase text-[8px] tracking-widest">Final Result</span>
+                                                        {game.result_win === null && <span className="text-zinc-500 text-[8px] font-bold">STALEMATE</span>}
                                                     </div>
-                                                    <div className="flex items-center justify-between gap-4">
-                                                        <span>{game.teams.split(' @ ')[0]} (Away)</span>
-                                                        <span className="font-bold text-foreground">{game.away_score}</span>
+
+                                                    <div className="space-y-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-zinc-400 truncate max-w-[120px]">{game.teams.split(' @ ')[1]}</span>
+                                                            <span className="font-bold text-foreground">{game.home_score}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-zinc-400 truncate max-w-[120px]">{game.teams.split(' @ ')[0]}</span>
+                                                            <span className="font-bold text-foreground">{game.away_score}</span>
+                                                        </div>
                                                     </div>
-                                                    <div className="h-px bg-zinc-800 my-1" />
-                                                    <div className="text-emerald-400 font-bold">
-                                                        Signal: {game.signal_side === 'home'
-                                                            ? `${game.teams.split(' @ ')[1]} (Home)`
-                                                            : `${game.teams.split(' @ ')[0]} (Away)`}
+
+                                                    <div className="bg-white/5 p-2 rounded flex flex-col gap-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-zinc-500">Signal:</span>
+                                                            <span className="text-emerald-400 font-bold">{game.signal_side === 'home' ? 'HOME' : 'AWAY'}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between border-t border-white/5 pt-1 mt-1">
+                                                            <span className="text-zinc-500">Spread:</span>
+                                                            <span className="text-amber-400/80 font-bold">{game.current_spread > 0 ? `+${game.current_spread}` : game.current_spread}</span>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-zinc-400 italic">
-                                                        Against Closing Spread
+
+                                                    <div className={`text-[9px] font-bold text-center py-1 rounded border ${game.result_win === true ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/5' :
+                                                        game.result_win === false ? 'text-rose-400 border-rose-500/20 bg-rose-500/5' :
+                                                            'text-zinc-400 border-zinc-500/20 bg-zinc-500/5'}`}>
+                                                        {game.result_win === true ? 'SIGNAL COVERED' :
+                                                            game.result_win === false ? 'SIGNAL FAILED' :
+                                                                'SPREAD PUSHED'}
                                                     </div>
                                                 </div>
                                             </PopoverContent>

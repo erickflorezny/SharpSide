@@ -54,39 +54,48 @@ export async function GET() {
             if (gameStatus === 'upcoming') continue;
 
             // Improved matching: Use primary names and tokens
-            // "Virginia Cavaliers" -> ["Virginia", "Cavaliers"]
-            // We search for both names in the "teams" string
-            const awayTokens = awayName.split(' ');
-            const homeTokens = homeName.split(' ');
+            const awayTokens = awayName.split(' ').filter(t => t.length > 3);
+            const homeTokens = homeName.split(' ').filter(t => t.length > 3);
 
-            // Try matching with the first word (usually the city/school name)
-            const awaySearch = awayTokens[0];
-            const homeSearch = homeTokens[0];
+            // Search for games containing either team name tokens
+            const searchTerms = [...awayTokens, ...homeTokens];
+            const orFilter = searchTerms.map(t => `teams.ilike.%${t}%`).join(',');
 
             const { data: matchedGames } = await supabase
                 .from('games')
                 .select('id, signal_side, closing_spread, teams')
-                .or(`teams.ilike.%${awaySearch}%${homeSearch}%,teams.ilike.%${awayName}%${homeName}%`);
+                .or(orFilter);
 
             if (!matchedGames || matchedGames.length === 0) continue;
 
-            for (const gameRecord of matchedGames) {
+            // Further filter matches in code to ensure BOTH teams are present in the 'teams' string
+            const finalMatches = matchedGames.filter(g => {
+                const gTeams = g.teams.toLowerCase();
+                const hasAway = awayTokens.some(t => gTeams.includes(t.toLowerCase())) || gTeams.includes(awayName.toLowerCase());
+                const hasHome = homeTokens.some(t => gTeams.includes(t.toLowerCase())) || gTeams.includes(homeName.toLowerCase());
+                return hasAway && hasHome;
+            });
+
+            if (finalMatches.length === 0) continue;
+
+            for (const gameRecord of finalMatches) {
                 let resultWin: boolean | null = null;
 
                 if (gameStatus === 'final' && gameRecord.signal_side && gameRecord.closing_spread !== null) {
-                    // resultWin = Did the SHARP side cover the spread?
-                    // closing_spread is always the HOME team's spread.
+                    const homeAdjusted = homeScore + gameRecord.closing_spread;
 
                     if (gameRecord.signal_side === 'home') {
-                        // Sharp on Home. Home must cover.
-                        // SMC (Home) +5 vs Gonzaga. SMC 61, Gonzaga 62. 
-                        // 61 + 5 = 66. 66 > 62. Win!
-                        resultWin = (homeScore + gameRecord.closing_spread) > awayScore;
+                        if (homeAdjusted === awayScore) {
+                            resultWin = null; // PUSH
+                        } else {
+                            resultWin = homeAdjusted > awayScore;
+                        }
                     } else {
-                        // Sharp on Away. Away must cover.
-                        // Gonzaga (Away) -5 vs SMC. Gonzaga 62, SMC 61.
-                        // 62 > 61 + 5. 62 > 66. Loss.
-                        resultWin = awayScore > (homeScore + gameRecord.closing_spread);
+                        if (awayScore === homeAdjusted) {
+                            resultWin = null; // PUSH
+                        } else {
+                            resultWin = awayScore > homeAdjusted;
+                        }
                     }
                 }
 

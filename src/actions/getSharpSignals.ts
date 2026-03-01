@@ -205,6 +205,26 @@ export async function getSharpSignals(filters?: {
                 continue;
             }
 
+            // ON-THE-FLY RESULT CALCULATION FALLBACK
+            let resultWinFiltered = game.result_win ?? null;
+            const hasScores = game.home_score !== null && game.away_score !== null;
+            if (resultWinFiltered === null && gameStatus === 'final' && hasScores && game.signal_side) {
+                // We use currentSpread (closing) for the verification
+                const homeAdjusted = (game.home_score || 0) + currentSpread;
+                const homeScore = game.home_score || 0;
+                const awayScore = game.away_score || 0;
+
+                if (game.signal_side === 'home') {
+                    if (homeAdjusted !== awayScore) {
+                        resultWinFiltered = homeAdjusted > awayScore;
+                    }
+                } else {
+                    if (awayScore !== homeAdjusted) {
+                        resultWinFiltered = awayScore > homeAdjusted;
+                    }
+                }
+            }
+
             results.push({
                 id: game.id,
                 teams: game.teams,
@@ -216,7 +236,7 @@ export async function getSharpSignals(filters?: {
                 game_status: gameStatus,
                 signal_side: game.signal_side ?? null,
                 confidence_score: game.confidence_score ?? 50,
-                result_win: game.result_win ?? null,
+                result_win: resultWinFiltered,
                 opening_spread: openingSpread,
                 current_spread: currentSpread,
                 spread_delta: spreadDelta,
