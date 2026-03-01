@@ -36,8 +36,8 @@ export async function getSharpSignals(filters?: {
 
     // Query games that have odds_snapshots.
     // In a robust production environment, you would use a Postgres View or RPC to handle this logic efficiently.
-    // Show games from the last 6 hours onward (includes in-progress games)
-    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    // Show games from the last 24 hours onward (includes in-progress and recently finished games)
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     let games;
     let error;
@@ -70,7 +70,7 @@ export async function getSharpSignals(filters?: {
         timestamp
       )
     `)
-        .gte('commence_time', sixHoursAgo)
+        .gte('commence_time', twentyFourHoursAgo)
         .order('commence_time', { ascending: true });
 
     if (result.error) {
@@ -96,7 +96,7 @@ export async function getSharpSignals(filters?: {
             timestamp
           )
         `)
-            .gte('commence_time', sixHoursAgo)
+            .gte('commence_time', twentyFourHoursAgo)
             .order('commence_time', { ascending: true });
 
         games = fallback.data;
@@ -112,10 +112,19 @@ export async function getSharpSignals(filters?: {
     }
 
     const results: SharpSignalGame[] = [];
+    const seenGames = new Set<string>();
 
     for (const game of games || []) {
+        // De-duplicate games (In case multiple providers return the same matchup)
+        // Normalize teams: "Away @ Home" -> "away-home" (sorted)
+        const teamsNorm = game.teams.split(' @ ').sort().join('-').toLowerCase().trim();
+        const dateNorm = new Date(game.commence_time).toISOString().split('T')[0];
+        const uniqueKey = `${teamsNorm}-${dateNorm}`;
+
+        if (seenGames.has(uniqueKey)) continue;
+        seenGames.add(uniqueKey);
+
         // We need at least 2 snapshots to measure true line movement.
-        // However, for testing this integration right now, we will allow games with just 1 snapshot to show up.
         if (!game.odds_snapshots || game.odds_snapshots.length === 0) continue;
 
         // Sort snapshots by time
@@ -146,6 +155,16 @@ export async function getSharpSignals(filters?: {
                 pubSide = spreadDelta > 0 ? 'away' : 'home';
             }
 
+            const gameStatus = (game as any).game_status ?? 'upcoming';
+            const startTime = new Date(game.commence_time).getTime();
+            const now = Date.now();
+
+            // STALE FILTER: If a game is still 'upcoming' but started > 4 hours ago, 
+            // it's likely finished but status hasn't updated. Hide it to keep dashboard clean.
+            if (gameStatus === 'upcoming' && (now - startTime) > 4 * 60 * 60 * 1000) {
+                continue;
+            }
+
             results.push({
                 id: game.id,
                 teams: game.teams,
@@ -154,7 +173,7 @@ export async function getSharpSignals(filters?: {
                 away_rank: game.away_rank,
                 home_score: (game as any).home_score ?? null,
                 away_score: (game as any).away_score ?? null,
-                game_status: (game as any).game_status ?? 'upcoming',
+                game_status: gameStatus,
                 signal_side: (game as any).signal_side ?? null,
                 confidence_score: (game as any).confidence_score ?? 50,
                 result_win: (game as any).result_win ?? null,
@@ -188,5 +207,24 @@ export async function getSharpSignals(filters?: {
         filteredResults = filteredResults.filter(g => g.confidence_score >= 80);
     }
 
-    return filteredResults;
+    // FINAL SMART SORT:
+    // 1. Live Games first (By time ASC)
+    // 2. Upcoming Games next (By time ASC)
+    // 3. Final Games last (By time DESC - most recent at top of results section)
+    return filteredResults.sort((a, b) => {
+        const statusPriority: Record<string, number> = { 'live': 1, 'upcoming': 2, 'final': 3 };
+        const aPriority = statusPriority[a.game_status || 'upcoming'];
+        const bPriority = statusPriority[b.game_status || 'upcoming'];
+
+        if (aPriority !== bPriority) return aPriority - bPriority;
+
+        const aTime = new Date(a.commence_time).getTime();
+        const bTime = new Date(b.commence_time).getTime();
+
+        // If both are 'final', sort descending (most recent first)
+        if (a.game_status === 'final') return bTime - aTime;
+
+        // Otherwise sort ascending (soonest first)
+        return aTime - bTime;
+    });
 }

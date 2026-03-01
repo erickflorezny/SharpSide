@@ -122,7 +122,12 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                 {isSharp && (
                     <div className="space-y-1.5 border-b border-border/30 pb-3 mb-2">
                         <div className="flex justify-between items-end text-[10px] font-bold uppercase tracking-tighter">
-                            <span className="text-muted-foreground">Confidence Score</span>
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-muted-foreground">Confidence Score</span>
+                                <Badge variant="outline" className="text-[8px] px-1 py-0 h-3 border-amber-500/20 text-amber-500/70 bg-amber-500/5 font-mono">
+                                    TUNED
+                                </Badge>
+                            </div>
                             <span className={game.confidence_score >= 85 ? 'text-amber-400 animate-pulse' : 'text-zinc-400'}>
                                 {game.confidence_score}%
                             </span>
@@ -130,7 +135,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                         <div className="h-1.5 w-full bg-zinc-800/50 rounded-full overflow-hidden border border-white/5">
                             <div
                                 className={`h-full transition-all duration-1000 ease-out rounded-full ${game.confidence_score >= 85 ? 'bg-gradient-to-r from-amber-600 to-amber-400' :
-                                        game.confidence_score >= 70 ? 'bg-emerald-500' : 'bg-zinc-600'
+                                    game.confidence_score >= 70 ? 'bg-emerald-500' : 'bg-zinc-600'
                                     }`}
                                 style={{ width: `${game.confidence_score}%` }}
                             />

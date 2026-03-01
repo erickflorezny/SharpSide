@@ -2,14 +2,12 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 
 /**
- * Fetch live scores from ESPN's free public API (no API key needed).
- * This saves Odds API credits by using a separate free source for scores.
+ * Fetch live scores from ESPN's free public API.
  */
 export async function GET() {
     try {
         const supabase = await createClient();
 
-        // ESPN NCAAB Scoreboard — free, no API key required
         const response = await fetch(
             'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard',
             { next: { revalidate: 0 } }
@@ -37,37 +35,46 @@ export async function GET() {
             const homeName = homeTeam.team?.displayName || '';
             const awayName = awayTeam.team?.displayName || '';
 
-            // Determine game status
-            const statusType = event.status?.type?.name; // 'STATUS_SCHEDULED', 'STATUS_IN_PROGRESS', 'STATUS_FINAL'
+            // Status: 'STATUS_SCHEDULED', 'STATUS_IN_PROGRESS', 'STATUS_FINAL', 'STATUS_FINAL_OT', 'STATUS_HALFTIME'
+            const statusType = event.status?.type?.name;
             let gameStatus = 'upcoming';
-            if (statusType === 'STATUS_FINAL' || statusType === 'STATUS_FINAL_OT') {
+            if (statusType.includes('FINAL')) {
                 gameStatus = 'final';
-            } else if (statusType === 'STATUS_IN_PROGRESS' || statusType === 'STATUS_HALFTIME' || statusType === 'STATUS_END_PERIOD') {
+            } else if (statusType.includes('PROGRESS') || statusType.includes('HALFTIME') || statusType.includes('PERIOD')) {
                 gameStatus = 'live';
             }
 
-            // Only update games that are live or final
+            // Only update games that have a score (live or final)
             if (gameStatus === 'upcoming') continue;
 
-            // Match by team names in the "teams" column (format: "Away @ Home")
-            const matchPattern = `%${awayName}%${homeName}%`;
+            // Improved matching: Use primary names and tokens
+            // "Virginia Cavaliers" -> ["Virginia", "Cavaliers"]
+            // We search for both names in the "teams" string
+            const awayTokens = awayName.split(' ');
+            const homeTokens = homeName.split(' ');
 
-            // First, find the game to get signal data
+            // Try matching with the first word (usually the city/school name)
+            const awaySearch = awayTokens[0];
+            const homeSearch = homeTokens[0];
+
             const { data: matchedGames } = await supabase
                 .from('games')
-                .select('id, signal_side, closing_spread')
-                .ilike('teams', matchPattern)
+                .select('id, signal_side, closing_spread, teams')
+                .or(`teams.ilike.%${awaySearch}%${homeSearch}%,teams.ilike.%${awayName}%${homeName}%`)
                 .limit(1);
 
             const gameRecord = matchedGames?.[0];
+            if (!gameRecord) continue;
 
             let resultWin: boolean | null = null;
-            if (gameRecord && gameStatus === 'final' && gameRecord.signal_side && gameRecord.closing_spread !== null) {
-                const homeFinal = homeScore + gameRecord.closing_spread;
+            if (gameStatus === 'final' && gameRecord.signal_side && gameRecord.closing_spread !== null) {
+                // Adjust score by spread (CLOSING spread)
+                // If Bovada says -5, homeFinal = score - 5.
+                const homeAdjusted = homeScore + gameRecord.closing_spread;
                 if (gameRecord.signal_side === 'home') {
-                    resultWin = homeFinal > awayScore;
+                    resultWin = homeAdjusted > awayScore;
                 } else {
-                    resultWin = awayScore > homeFinal;
+                    resultWin = awayScore > homeAdjusted;
                 }
             }
 
@@ -80,22 +87,19 @@ export async function GET() {
                     last_score_update: new Date().toISOString(),
                     result_win: resultWin
                 })
-                .ilike('teams', matchPattern);
+                .eq('id', gameRecord.id);
 
             if (!error) updated++;
         }
 
         return NextResponse.json({
             success: true,
-            message: `Scores updated from ESPN. ${updated} games matched.`,
+            message: `Scores updated. ${updated} matched.`,
             totalEvents: events.length,
             scoresUpdated: updated,
         });
     } catch (error: unknown) {
         console.error('ESPN Scores Error:', error);
-        return NextResponse.json(
-            { error: 'Internal Server Error', message: error instanceof Error ? error.message : 'Unknown error' },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
     }
 }

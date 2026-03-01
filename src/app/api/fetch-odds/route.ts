@@ -9,37 +9,132 @@ export async function GET() {
             return NextResponse.json({ error: 'ODDS_API_KEY is not configured.' }, { status: 500 });
         }
 
-        // 1. Fetch from The Odds API
-        // Sports key: basketball_ncaab
-        // Markets: spreads
-        // Regions: us
+        let data = [];
+        let source = 'NONE';
+        let chainErrors: any[] = [];
+
+        // --- STEP 1: The Odds API (Primary) ---
         const response = await fetch(`https://api.the-odds-api.com/v4/sports/basketball_ncaab/odds/?apiKey=${ODDS_API_KEY}&regions=us&markets=spreads,h2h,totals`, {
-            next: { revalidate: 0 } // no cache for cron
+            next: { revalidate: 0 }
         });
 
-        if (!response.ok) {
+        if (response.ok) {
+            data = await response.json();
+            source = 'The Odds API';
+            console.log(`The Odds API returned ${data?.length || 0} items.`);
+        }
+        // --- STEP 2: SportsDataIO Fallback ---
+        else {
             const errorText = await response.text();
-            console.error("Odds API Error:", errorText);
-            return NextResponse.json({ error: 'Failed to fetch from Odds API', details: errorText }, { status: response.status });
+            chainErrors.push({ provider: 'The Odds API', status: response.status, details: errorText });
+            console.warn(`The Odds API failed (Status: ${response.status}). Attempting SportsDataIO fallback...`);
+            const SPORTSDATA_IO_KEY = process.env.SPORTSDATA_IO_KEY;
+
+            if (SPORTSDATA_IO_KEY) {
+                const today = new Date().toISOString().split('T')[0];
+                const sportsDataRes = await fetch(`https://api.sportsdata.io/v3/cbb/odds/json/GameOddsByDate/${today}`, {
+                    headers: { 'Ocp-Apim-Subscription-Key': SPORTSDATA_IO_KEY },
+                    next: { revalidate: 0 }
+                });
+
+                if (sportsDataRes.ok) {
+                    const sportsData = await sportsDataRes.json();
+                    data = mapSportsDataIOToStandard(sportsData || []);
+                    source = 'SportsDataIO';
+                    console.log(`SportsDataIO returned ${data.length} items.`);
+                } else {
+                    const errorText = await sportsDataRes.text();
+                    chainErrors.push({ provider: 'SportsDataIO', status: sportsDataRes.status, details: errorText });
+                    console.error("SportsDataIO also failed.");
+                }
+            } else {
+                chainErrors.push({ provider: 'SportsDataIO', error: 'No API Key configured.' });
+            }
         }
 
-        const data = await response.json();
+        // --- STEP 3: TheRundown Fallback (Tertiary) ---
+        if (data.length === 0) {
+            console.warn("Attempting TheRundown fallback...");
+            const THERUNDOWN_API_KEY = process.env.THERUNDOWN_API_KEY;
+
+            if (THERUNDOWN_API_KEY) {
+                const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                const rundownRes = await fetch(`https://therundown.io/api/v2/sports/5/events/${today}?include=all_periods`, {
+                    headers: { 'X-TheRundown-Key': THERUNDOWN_API_KEY },
+                    next: { revalidate: 0 }
+                });
+
+                if (rundownRes.ok) {
+                    const rundownData = await rundownRes.json();
+                    data = mapTheRundownToStandard(rundownData.events || []);
+                    source = 'TheRundown';
+                    console.log(`TheRundown returned ${data.length} items.`);
+                } else {
+                    const errorText = await rundownRes.text();
+                    chainErrors.push({ provider: 'TheRundown', status: rundownRes.status, details: errorText });
+                    console.error("TheRundown fallback failed.");
+                }
+            } else {
+                chainErrors.push({ provider: 'TheRundown', error: 'No API Key configured.' });
+            }
+        }
+
+        // --- STEP 4: API-Sports Fallback (Quaternary) ---
+        if (data.length === 0) {
+            console.warn("Attempting API-Sports fallback...");
+            const API_SPORTS_KEY = process.env.API_SPORTS_KEY;
+
+            if (API_SPORTS_KEY) {
+                const apiSportsRes = await fetch(`https://v1.basketball.api-sports.io/odds?league=116&season=2024`, {
+                    headers: { 'x-apisports-key': API_SPORTS_KEY },
+                    next: { revalidate: 0 }
+                });
+
+                if (apiSportsRes.ok) {
+                    const apiSportsData = await apiSportsRes.json();
+                    data = mapApiSportsToStandard(apiSportsData.response || []);
+                    source = 'API-Sports';
+                    console.log(`API-Sports returned ${data.length} items.`);
+                } else {
+                    const errorText = await apiSportsRes.text();
+                    chainErrors.push({ provider: 'API-Sports', status: apiSportsRes.status, details: errorText });
+                    console.error("API-Sports fallback failed.");
+                }
+            } else {
+                chainErrors.push({ provider: 'API-Sports', error: 'No API Key configured.' });
+            }
+        }
+
+        if (data.length === 0) {
+            return NextResponse.json({
+                error: 'All odds providers failed or returned no data.',
+                diagnostics: chainErrors
+            }, { status: 503 });
+        }
         const supabase = await createClient();
+
+        // --- NEW: Fetch Dynamic Weights for Learning Engine ---
+        const { data: weightsData } = await supabase
+            .from('signal_weights')
+            .select('category, weight');
+
+        const weights = (weightsData || []).reduce((acc: any, curr: any) => {
+            acc[curr.category] = curr.weight;
+            return acc;
+        }, {});
+
+        // Defaults if weights table is empty
+        const SPREAD_MULT = weights.spread_multiplier || 10;
+        const TOP_25_BONUS = weights.top_25_bonus || 10;
+        const BASE_SCORE = weights.default_base_score || 50;
 
         let gamesInserted = 0;
         let oddsInserted = 0;
 
-        console.log(`Fetched ${data.length} games from The Odds API`);
+        console.log(`Fetched ${data.length} games from ${source}`);
 
-        // 2. Transform and Upsert to Supabase
         for (const game of data) {
-            // 2a. Upsert Game Table
-            // Use game.id from Odds API as external_id
             const teamsString = `${game.away_team} @ ${game.home_team}`;
-
-
-
-            // 2b. Extract Spread and ML
             const bookmakers = game.bookmakers;
             if (!bookmakers || bookmakers.length === 0) continue;
 
@@ -53,26 +148,17 @@ export async function GET() {
             const currentSpread = homeOutcome.point;
             const spreadPrice = homeOutcome.price;
 
-            // 2c. Calculate Sharp Signal Side and Confidence Score
+            // Calculate Sharp Signal Side and Confidence Score
             let signalSide: string | null = null;
             let confidenceScore = 50;
 
-            // Get opening line if exists, otherwise use current
-            const openingSpread = game.odds_snapshots?.[0]?.spread ?? currentSpread;
-            const spreadDelta = currentSpread - openingSpread;
+            // Simple heuristic for opening line if not provided in payload
+            // In a real app, you'd fetch the actual opening from a historical endpoint
+            const openingSpread = currentSpread; // Placeholder logic as the payload doesn't always have snapshots
+            const spreadDelta = 0; // Will be calculated after first snapshot is in DB
 
-            if (Math.abs(spreadDelta) >= 1.0) {
-                // Determine Sharp Side (opposite of public)
-                if (currentSpread < 0) {
-                    signalSide = spreadDelta > 0 ? 'away' : 'home';
-                } else {
-                    signalSide = spreadDelta > 0 ? 'home' : 'away';
-                }
-
-                // Initial Confidence Formula
-                confidenceScore += Math.floor(Math.abs(spreadDelta) * 15);
-                if (getTeamRank(game.home_team) || getTeamRank(game.away_team)) confidenceScore += 10;
-            }
+            // Note: We'll let the backfill/update logic handle the delta calculation 
+            // once we have at least 2 snapshots in the DB.
 
             const { data: gameRecord, error: gameError } = await supabase
                 .from('games')
@@ -82,17 +168,14 @@ export async function GET() {
                     commence_time: game.commence_time,
                     home_rank: getTeamRank(game.home_team),
                     away_rank: getTeamRank(game.away_team),
-                    signal_side: signalSide,
-                    confidence_score: Math.min(99, confidenceScore),
+                    // signal_side and confidence_score are usually updated by the movement analyzer
+                    // but we ensure columns exist.
                     closing_spread: currentSpread
                 }, { onConflict: 'external_id' })
                 .select('id')
                 .single();
 
-            if (gameError || !gameRecord) {
-                console.error(`Error upserting game ${game.id}:`, gameError?.message || 'No record returned');
-                continue;
-            }
+            if (gameError || !gameRecord) continue;
             gamesInserted++;
 
             // Extract moneyline (h2h market)
@@ -106,7 +189,7 @@ export async function GET() {
                 mlAway = mlAwayOutcome?.price ?? null;
             }
 
-            // Extract totals (over/under)
+            // Extract totals
             const totalsMarket = primaryBookmaker.markets.find((m: { key: string }) => m.key === 'totals');
             let totalPoints: number | null = null;
             let overPrice: number | null = null;
@@ -119,7 +202,6 @@ export async function GET() {
                 underPrice = underOutcome?.price ?? null;
             }
 
-            // Check if this is the FIRST snapshot for this game
             const { count } = await supabase
                 .from('odds_snapshots')
                 .select('*', { count: 'exact', head: true })
@@ -142,21 +224,254 @@ export async function GET() {
                     is_opening_line: isOpeningLine
                 });
 
-            if (oddsError) {
-                console.error("Error inserting odds snapshot:", oddsError);
-            } else {
-                oddsInserted++;
+            if (!oddsError) oddsInserted++;
+
+            // RE-CALCULATE CONFIDENCE & SIGNAL AFTER INSERTING SNAPSHOT
+            // This ensures every sync refreshes the "Sharp" status based on movement
+            const { data: snapshots } = await supabase
+                .from('odds_snapshots')
+                .select('spread, is_opening_line')
+                .eq('game_id', gameRecord.id)
+                .order('timestamp', { ascending: true });
+
+            if (snapshots && snapshots.length >= 2) {
+                const opening = snapshots.find(s => s.is_opening_line) || snapshots[0];
+                const current = snapshots[snapshots.length - 1];
+                const delta = current.spread - opening.spread;
+
+                if (Math.abs(delta) >= 1.0) {
+                    let side: 'home' | 'away' | null = null;
+                    if (current.spread < 0) {
+                        side = delta > 0 ? 'away' : 'home';
+                    } else {
+                        side = delta > 0 ? 'home' : 'away';
+                    }
+
+                    let score = BASE_SCORE;
+                    score += Math.floor(Math.abs(delta) * SPREAD_MULT);
+                    if (getTeamRank(game.home_team) || getTeamRank(game.away_team)) score += TOP_25_BONUS;
+
+                    await supabase.from('games').update({
+                        signal_side: side,
+                        confidence_score: Math.min(98, score)
+                    }).eq('id', gameRecord.id);
+                }
             }
         }
 
         return NextResponse.json({
             success: true,
-            message: 'Odds successfully fetched and updated in database.',
+            message: 'Odds updated.',
             stats: { gamesProcessed: gamesInserted, oddsSnapshotsInserted: oddsInserted }
         });
 
-    } catch (error: unknown) {
+    } catch (error: any) {
         console.error("CRITICAL API ERROR:", error);
-        return NextResponse.json({ error: 'Internal Server Error', message: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+}
+
+/**
+ * Normalizes SportsDataIO CBB Odds data to match The Odds API structure
+ */
+function mapSportsDataIOToStandard(response: any): any[] {
+    if (!Array.isArray(response)) {
+        console.error("SportsDataIO returned non-array response:", response);
+        return [];
+    }
+
+    return response.map(item => {
+        const bookmakers = (item.PregameOdds || []).map((odds: any) => {
+            const markets = [];
+
+            if (!odds || !odds.Sportsbook) return null;
+
+            // Spread Market
+            if (odds.HomePointSpread !== null && odds.HomePointSpread !== undefined) {
+                markets.push({
+                    key: 'spreads',
+                    outcomes: [
+                        { name: item.HomeTeamName || 'Home', price: americanToDecimal(odds.HomePointSpreadPayout), point: odds.HomePointSpread },
+                        { name: item.AwayTeamName || 'Away', price: americanToDecimal(odds.AwayPointSpreadPayout), point: odds.AwayPointSpread }
+                    ]
+                });
+            }
+
+            // H2H Market
+            if (odds.HomeMoneyLine !== null && odds.HomeMoneyLine !== undefined) {
+                markets.push({
+                    key: 'h2h',
+                    outcomes: [
+                        { name: item.HomeTeamName || 'Home', price: americanToDecimal(odds.HomeMoneyLine), point: null },
+                        { name: item.AwayTeamName || 'Away', price: americanToDecimal(odds.AwayMoneyLine), point: null }
+                    ]
+                });
+            }
+
+            // Totals Market
+            if (odds.OverUnder !== null && odds.OverUnder !== undefined) {
+                markets.push({
+                    key: 'totals',
+                    outcomes: [
+                        { name: 'Over', price: americanToDecimal(odds.OverPayout), point: odds.OverUnder },
+                        { name: 'Under', price: americanToDecimal(odds.UnderPayout), point: odds.OverUnder }
+                    ]
+                });
+            }
+
+            return {
+                key: odds.Sportsbook.toLowerCase().replace(/\s+/g, ''),
+                title: odds.Sportsbook,
+                markets: markets
+            };
+        }).filter(Boolean);
+
+        return {
+            id: `sportsdata-${item.GameID || Math.random()}`,
+            commence_time: item.DateTime || new Date().toISOString(),
+            home_team: item.HomeTeamName || 'Unknown Home',
+            away_team: item.AwayTeamName || 'Unknown Away',
+            bookmakers: bookmakers
+        };
+    });
+}
+
+/**
+ * Normalizes API-Sports basketball odds data to match The Odds API structure
+ */
+function mapApiSportsToStandard(response: any[]): any[] {
+    if (!Array.isArray(response)) return [];
+
+    return response.map(item => {
+        const bookmakers = (item.bookmakers || []).map((b: any) => ({
+            key: b.name.toLowerCase().replace(/\s+/g, ''),
+            title: b.name,
+            markets: (b.bets || []).map((bet: any) => {
+                let marketKey = '';
+                if (bet.name === 'Home/Away') marketKey = 'h2h';
+                if (bet.name === 'Handicap' || bet.name === 'Spread') marketKey = 'spreads';
+                if (bet.name === 'Total points' || bet.name === 'Over/Under') marketKey = 'totals';
+
+                return {
+                    key: marketKey,
+                    outcomes: (bet.values || []).map((v: any) => {
+                        const pointMatch = v.value.match(/([+-]?\d+\.?\d*)/);
+                        const point = pointMatch ? parseFloat(pointMatch[1]) : null;
+
+                        let name = v.value;
+                        if (v.value.toLowerCase().includes('home')) name = item.teams.home.name;
+                        if (v.value.toLowerCase().includes('away')) name = item.teams.away.name;
+
+                        return {
+                            name: name,
+                            price: parseFloat(v.odd),
+                            point: point
+                        };
+                    })
+                };
+            }).filter((m: any) => m.key !== '')
+        }));
+
+        return {
+            id: `apisports-${item.game.id}`,
+            commence_time: item.game.date,
+            home_team: item.teams.home.name,
+            away_team: item.teams.away.name,
+            bookmakers: bookmakers
+        };
+    });
+}
+
+/**
+ * Normalizes TheRundown CBB Odds data to match The Odds API structure
+ * Sport ID 5 is NCAAB
+ */
+function mapTheRundownToStandard(events: any[]): any[] {
+    if (!Array.isArray(events)) return [];
+
+    return events.map(event => {
+        const bookmakers = [];
+
+        // TheRundown provides lines by sportsbook ID in a lines object
+        // 1: Pinnacle, 3: FanDuel, 7: DraftKings, etc.
+        if (event.lines) {
+            for (const [sbId, line] of Object.entries(event.lines) as [string, any][]) {
+                const markets = [];
+
+                // Spread
+                if (line.spread) {
+                    markets.push({
+                        key: 'spreads',
+                        outcomes: [
+                            { name: event.teams_normalized?.[0]?.name || event.teams?.[0]?.name, price: americanToDecimal(line.spread.affiliate_home_odds), point: line.spread.point_spread_home },
+                            { name: event.teams_normalized?.[1]?.name || event.teams?.[1]?.name, price: americanToDecimal(line.spread.affiliate_away_odds), point: line.spread.point_spread_away }
+                        ]
+                    });
+                }
+
+                // Moneyline
+                if (line.moneyline) {
+                    markets.push({
+                        key: 'h2h',
+                        outcomes: [
+                            { name: event.teams_normalized?.[0]?.name || event.teams?.[0]?.name, price: americanToDecimal(line.moneyline.moneyline_home) },
+                            { name: event.teams_normalized?.[1]?.name || event.teams?.[1]?.name, price: americanToDecimal(line.moneyline.moneyline_away) }
+                        ]
+                    });
+                }
+
+                // Totals
+                if (line.total) {
+                    markets.push({
+                        key: 'totals',
+                        outcomes: [
+                            { name: 'Over', price: americanToDecimal(line.total.total_over_odds), point: line.total.total_over },
+                            { name: 'Under', price: americanToDecimal(line.total.total_under_odds), point: line.total.total_over }
+                        ]
+                    });
+                }
+
+                if (markets.length > 0) {
+                    bookmakers.push({
+                        key: `rundown-${sbId}`,
+                        title: getSportsbookName(sbId),
+                        markets: markets
+                    });
+                }
+            }
+        }
+
+        return {
+            id: `rundown-${event.event_id}`,
+            commence_time: event.event_date,
+            home_team: event.teams_normalized?.find((t: any) => t.is_home)?.name || event.teams?.find((t: any) => t.is_home)?.name,
+            away_team: event.teams_normalized?.find((t: any) => !t.is_home)?.name || event.teams?.find((t: any) => !t.is_home)?.name,
+            bookmakers: bookmakers
+        };
+    });
+}
+
+function getSportsbookName(id: string): string {
+    const names: Record<string, string> = {
+        '1': 'Pinnacle',
+        '2': '5Dimes',
+        '3': 'FanDuel',
+        '4': 'BetOnline',
+        '7': 'DraftKings',
+        '8': 'Bovada',
+        '9': 'LowVig'
+    };
+    return names[id] || `Sportsbook ${id}`;
+}
+
+function americanToDecimal(american: any): number {
+    if (american === null || american === undefined || american === 0) return 1.91;
+    const odds = typeof american === 'string' ? parseFloat(american) : american;
+    if (isNaN(odds)) return 1.91;
+
+    if (odds > 0) {
+        return (odds / 100) + 1;
+    } else {
+        return (100 / Math.abs(odds)) + 1;
     }
 }

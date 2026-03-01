@@ -13,6 +13,8 @@ export function AutoRefresh() {
     const [lastScoreSync, setLastScoreSync] = useState<string>('Just now');
     const [isSyncingOdds, setIsSyncingOdds] = useState(false);
     const [isSyncingScores, setIsSyncingScores] = useState(false);
+    const [isCalibrating, setIsCalibrating] = useState(false);
+    const [calibrationMsg, setCalibrationMsg] = useState<string>('System Tuned');
 
     // Initial sync
     useEffect(() => {
@@ -43,6 +45,22 @@ export function AutoRefresh() {
             console.error('Score sync failed:', e);
         } finally {
             setIsSyncingScores(false);
+        }
+    }
+
+    async function calibrate() {
+        try {
+            setIsCalibrating(true);
+            const res = await fetch('/api/calibrate');
+            const data = await res.json();
+            if (data.success) {
+                setCalibrationMsg('Just Calibrated');
+                setTimeout(() => setCalibrationMsg('System Tuned'), 5000);
+            }
+        } catch (e) {
+            console.error('Calibration failed:', e);
+        } finally {
+            setIsCalibrating(false);
         }
     }
 
@@ -105,6 +123,16 @@ export function AutoRefresh() {
                 >
                     <RefreshCw className={`h-3 w-3 ${isSyncingOdds ? 'animate-spin text-emerald-400' : 'text-zinc-400'}`} />
                     <span className="text-xs font-semibold">{isSyncingOdds ? 'Syncing...' : 'Sync Odds'}</span>
+                </button>
+
+                <button
+                    onClick={calibrate}
+                    disabled={isCalibrating}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-500 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 shadow-lg"
+                    title="Calibrate Weights (Analyzes past hits/misses)"
+                >
+                    <Activity className={`h-3 w-3 ${isCalibrating ? 'animate-pulse' : ''}`} />
+                    <span className="text-xs font-semibold">{isCalibrating ? 'Tuning...' : 'Calibrate'}</span>
                 </button>
             </div>
         </div>

@@ -27,8 +27,13 @@ interface RankedPick {
     odds: number; // American
 }
 
-function rankSignals(signals: SharpSignalGame[]): RankedPick[] {
-    return signals
+function rankSignals(signals: SharpSignalGame[], strongOnly: boolean): RankedPick[] {
+    let filtered = signals;
+    if (strongOnly) {
+        filtered = signals.filter(s => s.confidence_score >= 80);
+    }
+
+    return filtered
         .map((game) => {
             const teamParts = game.teams.split(' @ ');
             const awayTeam = teamParts[0] || 'Away';
@@ -61,41 +66,43 @@ function rankSignals(signals: SharpSignalGame[]): RankedPick[] {
                 betType = 'ML';
                 line = sharpML !== null ? formatMLStr(sharpML) : '';
                 odds = sharpML !== null ? decimalToAmerican(sharpML) : -110;
-            } else if (sharpSpread > 5) {
-                betType = 'Spread';
-                line = formatSpread(sharpSpread);
-                odds = game.spread_price !== null ? decimalToAmerican(game.spread_price) : -110;
             } else {
                 betType = 'Spread';
                 line = formatSpread(sharpSpread);
                 odds = game.spread_price !== null ? decimalToAmerican(game.spread_price) : -110;
             }
 
-            // Composite score: win probability minus a penalty for large spreads
-            // Spreads under 5 get no penalty, 5-10 get moderate, 10+ get heavy
-            const spreadPenalty = absSpread <= 5 ? 0 : absSpread <= 10 ? (absSpread - 5) * 2 : (absSpread - 5) * 4;
-            const score = probability - spreadPenalty;
+            // Composite score: confidence_score is now the primary driver
+            // Boost significantly for confidence >= 80
+            const confidenceBonus = game.confidence_score >= 85 ? 50 : game.confidence_score >= 80 ? 30 : 0;
+            const spreadPenalty = absSpread <= 5 ? 0 : absSpread <= 10 ? (absSpread - 5) * 3 : (absSpread - 5) * 6;
+            const score = game.confidence_score + confidenceBonus - spreadPenalty;
 
             return { game, sharpTeam, probability, betType, line, odds, absSpread, score };
         })
-        // Filter out spreads larger than 10 points — too risky for parlays
-        .filter(pick => pick.absSpread <= 10)
+        // Filter out spreads larger than 12 points (slightly more lenient if it's high confidence)
+        .filter(pick => pick.absSpread <= 12)
         .sort((a, b) => b.score - a.score); // Best composite score first
 }
 
 export function AutoParlayBuilder({ signals }: AutoParlayBuilderProps) {
     const { addLeg, clearParlay, setIsOpen } = useParlay();
     const [legCount, setLegCount] = useState(3);
+    const [strongOnly, setStrongOnly] = useState(true);
 
     const sharpSignals = signals.filter(s => Math.abs(s.spread_delta) >= 1.0);
-    const maxLegs = Math.min(sharpSignals.length, 8);
+    const filteredSignals = strongOnly ? sharpSignals.filter(s => s.confidence_score >= 80) : sharpSignals;
+    const maxLegs = Math.min(filteredSignals.length, 8);
+
+    // Adjust legCount if it exceeds maxLegs after filtering
+    const effectiveLegCount = Math.min(legCount, maxLegs);
 
     if (sharpSignals.length < 2) return null;
 
     const handleAutoBuild = () => {
         clearParlay();
-        const ranked = rankSignals(sharpSignals);
-        const picks = ranked.slice(0, legCount);
+        const ranked = rankSignals(sharpSignals, strongOnly);
+        const picks = ranked.slice(0, effectiveLegCount);
 
         for (const pick of picks) {
             addLeg({
@@ -111,36 +118,56 @@ export function AutoParlayBuilder({ signals }: AutoParlayBuilderProps) {
     };
 
     return (
-        <div className="flex items-center gap-3 p-3 bg-zinc-900/60 border border-border/30 rounded-lg">
-            <Sparkles className="h-4 w-4 text-amber-400 shrink-0" />
-            <div className="flex flex-col min-w-0">
-                <span className="text-xs font-semibold text-foreground">Auto-Build Parlay</span>
-                <span className="text-[10px] text-muted-foreground">Best odds, capped at 10pt spreads</span>
-            </div>
-            <div className="ml-auto flex items-center gap-2 shrink-0">
-                <div className="flex items-center bg-zinc-800 border border-border/50 rounded-md">
-                    <button
-                        onClick={() => setLegCount(Math.max(2, legCount - 1))}
-                        className="px-1.5 py-1 text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                        <ChevronDown className="h-3 w-3" />
-                    </button>
-                    <span className="text-xs font-mono font-bold text-foreground px-1 min-w-[20px] text-center">{legCount}</span>
-                    <button
-                        onClick={() => setLegCount(Math.min(maxLegs, legCount + 1))}
-                        className="px-1.5 py-1 text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                        <ChevronUp className="h-3 w-3" />
-                    </button>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-zinc-900/60 border border-border/30 rounded-lg">
+            <div className="flex items-center gap-3 min-w-0">
+                <Sparkles className="h-4 w-4 text-amber-400 shrink-0" />
+                <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-semibold text-foreground">Auto-Build Parlay</span>
+                    <span className="text-[10px] text-muted-foreground truncate">Using tuned learning weights</span>
                 </div>
-                <span className="text-[10px] text-muted-foreground">legs</span>
-                <Button
-                    size="sm"
-                    onClick={handleAutoBuild}
-                    className="bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs px-3 h-7"
+            </div>
+
+            <div className="flex items-center gap-4 ml-auto">
+                {/* Strong Only Toggle */}
+                <div
+                    onClick={() => setStrongOnly(!strongOnly)}
+                    className="flex items-center gap-2 cursor-pointer group"
                 >
-                    Build
-                </Button>
+                    <div className={`w-8 h-4 rounded-full transition-colors relative ${strongOnly ? 'bg-amber-500/30' : 'bg-zinc-800'}`}>
+                        <div className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full transition-transform ${strongOnly ? 'translate-x-4 bg-amber-400' : 'bg-zinc-500'}`} />
+                    </div>
+                    <span className={`text-[10px] font-bold uppercase tracking-tight transition-colors ${strongOnly ? 'text-amber-400' : 'text-muted-foreground group-hover:text-zinc-300'}`}>
+                        Strong Only
+                    </span>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center bg-zinc-800 border border-border/50 rounded-md">
+                        <button
+                            onClick={() => setLegCount(Math.max(2, legCount - 1))}
+                            className="px-1.5 py-1 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            <ChevronDown className="h-3 w-3" />
+                        </button>
+                        <span className="text-xs font-mono font-bold text-foreground px-1 min-w-[20px] text-center">{effectiveLegCount}</span>
+                        <button
+                            onClick={() => setLegCount(Math.min(maxLegs, legCount + 1))}
+                            disabled={legCount >= maxLegs}
+                            className="px-1.5 py-1 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30"
+                        >
+                            <ChevronUp className="h-3 w-3" />
+                        </button>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">legs</span>
+                    <Button
+                        size="sm"
+                        onClick={handleAutoBuild}
+                        disabled={filteredSignals.length < 2}
+                        className="bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs px-3 h-7 disabled:opacity-50 disabled:bg-zinc-800"
+                    >
+                        Build
+                    </Button>
+                </div>
             </div>
         </div>
     );
