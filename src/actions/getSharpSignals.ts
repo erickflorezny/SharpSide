@@ -141,9 +141,15 @@ export async function getSharpSignals(filters?: {
     const seenGames = new Set<string>();
 
     for (const game of games || []) {
-        // De-duplicate games
-        const teamsNorm = game.teams.split(' @ ').sort().join('-').toLowerCase().trim();
-        const dateNorm = new Date(game.commence_time).toISOString().split('T')[0];
+        // De-duplicate games (more robustly)
+        const teamsParts = game.teams.toLowerCase().split(' @ ');
+        const teamsNorm = teamsParts.sort().join('-').trim();
+
+        // Use a 12-hour offset to normalize dates to the "game day" in US timezones 
+        // to prevent UTC midnight rollovers from creating duplicates
+        const gameDate = new Date(game.commence_time);
+        const offsetDate = new Date(gameDate.getTime() - (7 * 60 * 60 * 1000)); // -7h for MT/PT buffer
+        const dateNorm = offsetDate.toISOString().split('T')[0];
         const uniqueKey = `${teamsNorm}-${dateNorm}`;
 
         if (seenGames.has(uniqueKey)) continue;

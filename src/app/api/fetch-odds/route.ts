@@ -56,8 +56,9 @@ export async function GET() {
             const SPORTSDATA_IO_KEY = process.env.SPORTSDATA_IO_KEY;
 
             if (SPORTSDATA_IO_KEY) {
-                const today = new Date().toISOString().split('T')[0];
-                const sportsDataRes = await fetch(`https://api.sportsdata.io/v3/cbb/odds/json/GameOddsByDate/${today}`, {
+                // Use US Eastern time for "today" as most NCAAB games follow this cycle
+                const estToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+                const sportsDataRes = await fetch(`https://api.sportsdata.io/v3/cbb/odds/json/GameOddsByDate/${estToday}`, {
                     headers: { 'Ocp-Apim-Subscription-Key': SPORTSDATA_IO_KEY },
                     next: { revalidate: 0 }
                 });
@@ -83,8 +84,8 @@ export async function GET() {
             const THERUNDOWN_API_KEY = process.env.THERUNDOWN_API_KEY;
 
             if (THERUNDOWN_API_KEY) {
-                const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-                const rundownRes = await fetch(`https://therundown.io/api/v2/sports/5/events/${today}?include=all_periods`, {
+                const estToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+                const rundownRes = await fetch(`https://therundown.io/api/v2/sports/5/events/${estToday}?include=all_periods`, {
                     headers: { 'X-TheRundown-Key': THERUNDOWN_API_KEY },
                     next: { revalidate: 0 }
                 });

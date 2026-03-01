@@ -37,7 +37,13 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                 <div className="flex justify-between items-start">
                     <div>
                         <CardDescription className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
-                            {new Date(game.commence_time).toLocaleDateString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
+                            {new Date(game.commence_time).toLocaleString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
+                            }).replace(',', ' •')}
                             {game.game_status === 'live' && (
                                 <span className="flex items-center gap-1 text-[10px] text-red-400 font-bold">
                                     <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
