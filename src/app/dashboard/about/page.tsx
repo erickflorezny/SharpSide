@@ -90,6 +90,32 @@ export default function AboutPage() {
                         <p>
                             <strong>SharpSide automates this detection.</strong> By capturing the opening line directly from The Odds API and measuring real-time fluctuations against perceived generic public trends, SharpSide highlights games where the line has moved significantly ({">"} 1.0 point) against standard public logic.
                         </p>
+
+                        <div className="space-y-4 pt-4 border-t border-border/20">
+                            <h3 className="text-lg font-bold text-foreground">Advanced Sharp Metrics</h3>
+
+                            <div className="grid grid-cols-1 gap-4">
+                                <div className="p-4 rounded-lg bg-indigo-500/5 border border-indigo-500/10 space-y-2">
+                                    <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm">
+                                        <Badge variant="outline" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400">🕵️ Swing Signal</Badge>
+                                        Line Reversal
+                                    </div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        Happens when the line moves significantly one way early in the day, then reverses significantly later. This &quot;swing&quot; indicates high volatility and often shows where the final professional consensus has landed after early market testing.
+                                    </p>
+                                </div>
+
+                                <div className="p-4 rounded-lg bg-sky-500/5 border border-sky-500/10 space-y-2">
+                                    <div className="flex items-center gap-2 text-sky-400 font-bold text-sm">
+                                        <Badge variant="outline" className="bg-sky-500/10 border-sky-500/20 text-sky-400">🚀 Late Steam</Badge>
+                                        Last-Minute Action
+                                    </div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        Significant line moves occurring in the 2 hours before tip-off. Late money is historically the most reliable &quot;sharp&quot; signal because it accounts for the most up-to-date information (injuries, lineup changes) and is where the largest syndicates typically place their final high-limit wagers.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
 

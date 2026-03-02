@@ -25,6 +25,19 @@ export interface SharpSignalGame {
     under_price: number | null;
     bookmaker: string;
     public_sentiment_side: string;
+    win_probability: number | null;
+    home_eff?: { rank: number; oe: number; de: number };
+    away_eff?: { rank: number; oe: number; de: number };
+    last_move_time?: string | null;
+    is_late_steam?: boolean;
+    potential_head_fake?: boolean;
+    market_maker_count: number;
+    handle_pct_home: number | null;
+    ticket_pct_home: number | null;
+    delta_category?: string;
+    is_cross_zero?: boolean;
+    is_golden_rule?: boolean;
+    conference_type?: string;
 }
 
 interface RawSnapshot {
@@ -49,10 +62,35 @@ interface RawGame {
     home_score?: number | null;
     away_score?: number | null;
     game_status?: string | null;
-    signal_side?: 'home' | 'away' | null;
     confidence_score?: number | null;
     result_win?: boolean | null;
+    market_maker_count?: number | null;
+    handle_pct_home?: number | null;
+    ticket_pct_home?: number | null;
+    delta_category?: string | null;
+    is_cross_zero?: boolean | null;
+    is_golden_rule?: boolean | null;
+    conference_type?: string | null;
     odds_snapshots: RawSnapshot[];
+}
+
+/**
+ * Normalizes team names for Torvik matching.
+ */
+function normalizeTeamName(name: string): string {
+    return name
+        .replace('State', 'St.')
+        .replace('University', '')
+        .replace('UConn', 'Connecticut')
+        .replace('UMass', 'Massachusetts')
+        .trim();
+}
+
+/**
+ * Calculates Log5/Barthag win probability.
+ */
+function calculateWinProb(a: number, b: number): number {
+    return (a - a * b) / (a + b - 2 * a * b);
 }
 
 export async function getSharpSignals(filters?: {
@@ -62,85 +100,61 @@ export async function getSharpSignals(filters?: {
 }): Promise<SharpSignalGame[]> {
     const supabase = await createClient();
 
-    // Query games that have odds_snapshots.
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    let games: RawGame[] | null = null;
-    let error;
-
-    // Try with score columns first, fall back without if migration hasn't run
-    const result = await supabase
+    // 1. Fetch Games with Snapshots
+    const { data: games, error } = await supabase
         .from('games')
         .select(`
-      id,
-      teams,
-      commence_time,
-      home_rank,
-      away_rank,
-      home_score,
-      away_score,
-      game_status,
-      signal_side,
-      confidence_score,
-      result_win,
-      odds_snapshots (
-        spread,
-        spread_price,
-        moneyline_home,
-        moneyline_away,
-        total_points,
-        over_price,
-        under_price,
-        bookmaker,
-        is_opening_line,
-        timestamp
-      )
-    `)
+            id,
+            teams,
+            commence_time,
+            home_rank,
+            away_rank,
+            home_score,
+            away_score,
+            game_status,
+            signal_side,
+            confidence_score,
+            result_win,
+            market_maker_count,
+            handle_pct_home,
+            ticket_pct_home,
+            delta_category,
+            is_cross_zero,
+            is_golden_rule,
+            conference_type,
+            odds_snapshots (
+                spread,
+                spread_price,
+                moneyline_home,
+                moneyline_away,
+                total_points,
+                over_price,
+                under_price,
+                bookmaker,
+                is_opening_line,
+                timestamp
+            )
+        `)
         .gte('commence_time', twentyFourHoursAgo)
         .order('commence_time', { ascending: true });
 
-    if (result.error) {
-        // Fallback: query without score columns (migration not yet applied)
-        const fallback = await supabase
-            .from('games')
-            .select(`
-          id,
-          teams,
-          commence_time,
-          home_rank,
-          away_rank,
-          odds_snapshots (
-            spread,
-            spread_price,
-            moneyline_home,
-            moneyline_away,
-            total_points,
-            over_price,
-            under_price,
-            bookmaker,
-            is_opening_line,
-            timestamp
-          )
-        `)
-            .gte('commence_time', twentyFourHoursAgo)
-            .order('commence_time', { ascending: true });
-
-        games = fallback.data as unknown as RawGame[];
-        error = fallback.error;
-    } else {
-        games = result.data as unknown as RawGame[];
-        error = result.error;
-    }
-
     if (error) {
-        console.error("Error fetching signals from Supabase:", error);
+        console.error("Error fetching signals:", error);
         return [];
     }
+
+    // 2. Fetch All Efficiency Data for Joins
+    const { data: efficiency } = await supabase
+        .from('team_efficiency')
+        .select('*');
+
+    const effMap = new Map(efficiency?.map(e => [e.team_name.toLowerCase(), e]) || []);
 
     const results: SharpSignalGame[] = [];
     const seenGames = new Set<string>();
 
-    // Sort games to prioritize those with results/scores before deduplicating
     const sortedGames = [...(games || [])].sort((a, b) => {
         const aHasResult = a.result_win !== null || a.home_score !== null;
         const bHasResult = b.result_win !== null || b.home_score !== null;
@@ -150,26 +164,23 @@ export async function getSharpSignals(filters?: {
     });
 
     for (const game of sortedGames) {
-        // De-duplicate games (more robustly)
-        const teamsParts = game.teams.toLowerCase().split(' @ ');
-        const teamsNorm = teamsParts.sort().join('-').trim();
+        const teamsParts = game.teams.split(' @ ');
+        const awayTeam = teamsParts[0] || '';
+        const homeTeam = teamsParts[1] || '';
+        const teamsNorm = [awayTeam.toLowerCase(), homeTeam.toLowerCase()].sort().join('-').trim();
 
-        // Use a 12-hour offset to normalize dates to the "game day" in US timezones 
-        // to prevent UTC midnight rollovers from creating duplicates
         const gameDate = new Date(game.commence_time);
-        const offsetDate = new Date(gameDate.getTime() - (7 * 60 * 60 * 1000)); // -7h for MT/PT buffer
+        const offsetDate = new Date(gameDate.getTime() - (7 * 60 * 60 * 1000));
         const dateNorm = offsetDate.toISOString().split('T')[0];
         const uniqueKey = `${teamsNorm}-${dateNorm}`;
 
         if (seenGames.has(uniqueKey)) continue;
         seenGames.add(uniqueKey);
 
-        // We need at least 2 snapshots to measure true line movement.
         if (!game.odds_snapshots || game.odds_snapshots.length === 0) continue;
 
-        // Sort snapshots by time
         const sortedSnapshots = [...game.odds_snapshots].sort(
-            (a: RawSnapshot, b: RawSnapshot) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            (a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
 
         const openingSnapshot = sortedSnapshots.find(s => s.is_opening_line) || sortedSnapshots[0];
@@ -179,15 +190,9 @@ export async function getSharpSignals(filters?: {
 
         const openingSpread = openingSnapshot.spread;
         const currentSpread = currentSnapshot.spread;
-
-        // Spread delta: if opening is -5.0 and current is -3.0, delta is 2.0 (line moved towards the underdog).
         const spreadDelta = currentSpread - openingSpread;
 
-        // Sharp Definition:
-        // A simplified "Reverse Line Movement" indicator for this scaffold is when the 
-        // line moves >= 1.0 point AGAINST the perceived favorite.
         if (Math.abs(spreadDelta) >= 1.0) {
-            // Determine public side via simple heuristic
             let pubSide = 'unknown';
             if (currentSpread < 0) {
                 pubSide = spreadDelta > 0 ? 'home' : 'away';
@@ -195,34 +200,68 @@ export async function getSharpSignals(filters?: {
                 pubSide = spreadDelta > 0 ? 'away' : 'home';
             }
 
+            // Head Fake & Late Steam Analysis
+            let peakDelta = 0;
+            let peakTime = sortedSnapshots[0].timestamp;
+            let lastSignificantMoveTime = sortedSnapshots[0].timestamp;
+            let reachesPeakEarly = false;
+            let hasSignificantReversal = false;
+
+            for (let i = 1; i < sortedSnapshots.length; i++) {
+                const snap = sortedSnapshots[i];
+                const deltaFromOpen = snap.spread - openingSpread;
+
+                // Track peak move magnitude (farthest from opening)
+                if (Math.abs(deltaFromOpen) > Math.abs(peakDelta)) {
+                    peakDelta = deltaFromOpen;
+                    peakTime = snap.timestamp;
+                }
+
+                // Track last significant move (>= 0.5 pts)
+                const prevSnap = sortedSnapshots[i - 1];
+                if (Math.abs(snap.spread - prevSnap.spread) >= 0.5) {
+                    lastSignificantMoveTime = snap.timestamp;
+                }
+            }
+
+            // A "Head Fake" is when the line moves significantly one way, 
+            // then moves back significantly (>= 1.5 pts from peak) the other way.
+            const reversalMagnitude = peakDelta - spreadDelta; // If peak was +4 and current is +2, reversal is 2
+            if (Math.abs(reversalMagnitude) >= 1.5 && Math.abs(peakDelta) > Math.abs(spreadDelta)) {
+                hasSignificantReversal = true;
+            }
+
             const gameStatus = game.game_status ?? 'upcoming';
             const startTime = new Date(game.commence_time).getTime();
+            const lastMoveTime = new Date(lastSignificantMoveTime).getTime();
             const now = Date.now();
 
-            // STALE FILTER: If a game is still 'upcoming' but started > 4 hours ago, 
-            // it's likely finished but status hasn't updated. Hide it to keep dashboard clean.
+            // Late Steam: Significant move within 2 hours of kickoff
+            const isLateSteam = (startTime - lastMoveTime) < (2 * 60 * 60 * 1000) && (startTime - lastMoveTime) > 0;
+
             if (gameStatus === 'upcoming' && (now - startTime) > 4 * 60 * 60 * 1000) {
                 continue;
             }
 
-            // ON-THE-FLY RESULT CALCULATION FALLBACK
             let resultWinFiltered = game.result_win ?? null;
             const hasScores = game.home_score !== null && game.away_score !== null;
             if (resultWinFiltered === null && gameStatus === 'final' && hasScores && game.signal_side) {
-                // We use currentSpread (closing) for the verification
                 const homeAdjusted = (game.home_score || 0) + currentSpread;
-                const homeScore = game.home_score || 0;
-                const awayScore = game.away_score || 0;
-
                 if (game.signal_side === 'home') {
-                    if (homeAdjusted !== awayScore) {
-                        resultWinFiltered = homeAdjusted > awayScore;
-                    }
+                    if (homeAdjusted !== game.away_score) resultWinFiltered = homeAdjusted > (game.away_score || 0);
                 } else {
-                    if (awayScore !== homeAdjusted) {
-                        resultWinFiltered = awayScore > homeAdjusted;
-                    }
+                    if ((game.away_score || 0) !== homeAdjusted) resultWinFiltered = (game.away_score || 0) > homeAdjusted;
                 }
+            }
+
+            // 3. Efficiency Join & Win Probability
+            const homeEff = effMap.get(normalizeTeamName(homeTeam).toLowerCase()) || effMap.get(homeTeam.toLowerCase());
+            const awayEff = effMap.get(normalizeTeamName(awayTeam).toLowerCase()) || effMap.get(awayTeam.toLowerCase());
+
+            let winProb = null;
+            if (homeEff && awayEff) {
+                // Barthag Win Prob
+                winProb = calculateWinProb(homeEff.barthag, awayEff.barthag);
             }
 
             results.push({
@@ -247,22 +286,31 @@ export async function getSharpSignals(filters?: {
                 over_price: currentSnapshot.over_price ?? null,
                 under_price: currentSnapshot.under_price ?? null,
                 bookmaker: currentSnapshot.bookmaker ?? 'Unknown',
-                public_sentiment_side: pubSide
+                public_sentiment_side: pubSide,
+                win_probability: winProb ? Math.round(winProb * 100) : null,
+                home_eff: homeEff ? { rank: homeEff.barthag_rank, oe: homeEff.adj_oe, de: homeEff.adj_de } : undefined,
+                away_eff: awayEff ? { rank: awayEff.barthag_rank, oe: awayEff.adj_oe, de: awayEff.adj_de } : undefined,
+                last_move_time: lastSignificantMoveTime,
+                is_late_steam: isLateSteam,
+                potential_head_fake: hasSignificantReversal,
+                market_maker_count: game.market_maker_count ?? 0,
+                handle_pct_home: game.handle_pct_home ?? null,
+                ticket_pct_home: game.ticket_pct_home ?? null,
+                delta_category: game.delta_category ?? undefined,
+                is_cross_zero: game.is_cross_zero ?? false,
+                is_golden_rule: game.is_golden_rule ?? false,
+                conference_type: game.conference_type ?? undefined
             });
         }
     }
 
     let filteredResults = results;
-
     if (filters?.top25Only) {
         filteredResults = filteredResults.filter(g => (g.home_rank && g.home_rank <= 25) || (g.away_rank && g.away_rank <= 25));
     }
-
     if (filters?.homeFavoritesOnly) {
-        // Assuming negative spread means home favorite
         filteredResults = filteredResults.filter(g => g.current_spread < 0);
     }
-
     if (filters?.strongBetsOnly) {
         filteredResults = filteredResults.filter(g => g.confidence_score >= 80);
     }
@@ -270,21 +318,15 @@ export async function getSharpSignals(filters?: {
     // FINAL SMART SORT:
     // 1. Live Games first (By time ASC)
     // 2. Upcoming Games next (By time ASC)
-    // 3. Final Games last (By time DESC - most recent at top of results section)
+    // 3. Final Games last (By time DESC)
     return filteredResults.sort((a, b) => {
         const statusPriority: Record<string, number> = { 'live': 1, 'upcoming': 2, 'final': 3 };
         const aPriority = statusPriority[a.game_status || 'upcoming'];
         const bPriority = statusPriority[b.game_status || 'upcoming'];
-
         if (aPriority !== bPriority) return aPriority - bPriority;
-
         const aTime = new Date(a.commence_time).getTime();
         const bTime = new Date(b.commence_time).getTime();
-
-        // If both are 'final', sort descending (most recent first)
         if (a.game_status === 'final') return bTime - aTime;
-
-        // Otherwise sort ascending (soonest first)
         return aTime - bTime;
     });
 }

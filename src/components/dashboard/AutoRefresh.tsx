@@ -16,6 +16,7 @@ export function AutoRefresh() {
     const [isSyncingScores, setIsSyncingScores] = useState(false);
     const [isCalibrating, setIsCalibrating] = useState(false);
     const [calibrationMsg, setCalibrationMsg] = useState<string>('System Tuned');
+    const [accuracy, setAccuracy] = useState<number | null>(null);
 
     const syncScores = useCallback(async () => {
         try {
@@ -79,8 +80,9 @@ export function AutoRefresh() {
             setIsCalibrating(true);
             const res = await fetch('/api/calibrate');
             const data = await res.json();
-            if (data.success) {
-                setCalibrationMsg('Just Calibrated');
+            if (data.success && data.stats) {
+                setAccuracy(data.stats.overallWinRate);
+                setCalibrationMsg(data.stats.adjustmentsMade > 0 ? 'Tuned Logic' : 'Optimal Path');
                 setTimeout(() => setCalibrationMsg('System Tuned'), 5000);
             }
         } catch (e) {
@@ -111,12 +113,14 @@ export function AutoRefresh() {
 
             {/* Odds Sync Status & Button */}
             <div className={`flex ${isMobile ? 'flex-col gap-3' : 'items-center gap-3 w-full sm:w-auto'} `}>
-                <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Odds Snapshot</span>
-                    <span className="text-[9px] text-muted-foreground whitespace-nowrap">{lastOddsSync}</span>
-                </div>
-
                 <div className="flex items-center gap-2">
+                    {accuracy !== null && (
+                        <div className="flex flex-col items-end mr-1">
+                            <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Strong Acc</span>
+                            <span className="text-[11px] font-mono text-amber-200/90">{accuracy}%</span>
+                        </div>
+                    )}
+
                     <button
                         onClick={syncAll}
                         disabled={isSyncingOdds || isSyncingScores}

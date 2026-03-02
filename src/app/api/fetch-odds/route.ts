@@ -25,6 +25,7 @@ interface StandardGame {
     home_team: string;
     away_team: string;
     bookmakers: Bookmaker[];
+    opening_spread?: number;
 }
 
 export async function GET() {
@@ -145,7 +146,7 @@ export async function GET() {
             .select('category, weight');
 
         const weights = (weightsData || []).reduce((acc: Record<string, number>, curr: { category: string; weight: number }) => {
-            acc[curr.category] = curr.weight;
+            acc[curr.category] = Number(curr.weight);
             return acc;
         }, {} as Record<string, number>);
 
@@ -157,7 +158,16 @@ export async function GET() {
         let gamesInserted = 0;
         let oddsInserted = 0;
 
-        console.log(`Fetched ${data.length} games from ${source}`);
+        console.log(`Fetched ${data.length} games from ${source}. Weights: S=${SPREAD_MULT}, T25=${TOP_25_BONUS}`);
+
+        // Fetch efficiency data for conference lookups
+        const { data: efficiencyData } = await supabase
+            .from('team_efficiency')
+            .select('team_name, conference');
+        const confMap = new Map(efficiencyData?.map(e => [e.team_name.toLowerCase(), e.conference]) || []);
+
+        const highMajors = ['ACC', 'Big East', 'Big Ten', 'Big 12', 'SEC', 'Pac-12'];
+        const midMajors = ['AAC', 'A-10', 'CUSA', 'MW', 'MVC', 'WCC', 'MAC', 'SBC', 'WAC'];
 
         for (const game of data) {
             const teamsString = `${game.away_team} @ ${game.home_team}`;
@@ -165,6 +175,12 @@ export async function GET() {
             if (!bookmakers || bookmakers.length === 0) continue;
 
             const primaryBookmaker = bookmakers.find((b: Bookmaker) => b.key === 'pinnacle') || bookmakers[0];
+
+            // Market Maker Counting
+            // Standard Market Makers: Pinnacle, Circa, Bookmaker, BetOnline, LowVig
+            const marketMakerKeys = ['pinnacle', 'circa_sports', 'bookmaker', 'betonlineag', 'lowvig'];
+            const mmCount = bookmakers.filter((b: Bookmaker) => marketMakerKeys.includes(b.key)).length;
+
             const spreadMarket = primaryBookmaker.markets.find((m: Market) => m.key === 'spreads');
             if (!spreadMarket || !spreadMarket.outcomes || spreadMarket.outcomes.length === 0) continue;
 
@@ -174,17 +190,75 @@ export async function GET() {
             const currentSpread = homeOutcome.point ?? 0;
             const spreadPrice = homeOutcome.price;
 
+            // Betting Percentages (Handle vs Ticket Gap)
+            // Note: These require the betting_percentages add-on in The Odds API
+            const handlePctHome = (homeOutcome as any).betting_percentages?.handle ?? null;
+            const ticketPctHome = (homeOutcome as any).betting_percentages?.tickets ?? null;
+
+            // Re-calculate confidence with dynamic weights
+            let confidence = BASE_SCORE;
+            const hRank = getTeamRank(game.home_team);
+            const aRank = getTeamRank(game.away_team);
+
+            // 1. Sharp Movement (Spread Delta)
+            const opening = game.opening_spread !== undefined ? game.opening_spread : currentSpread;
+            const spreadDelta = Math.abs(currentSpread - opening);
+            confidence += (spreadDelta * SPREAD_MULT);
+
+            // 2. Top 25 Bonus
+            if ((hRank && hRank <= 25) || (aRank && aRank <= 25)) {
+                confidence += TOP_25_BONUS;
+            }
+            confidence = Math.min(99, Math.round(confidence));
+
+            // 3. Determine Side & Patterns
+            let signalSide: 'home' | 'away' | null = null;
+            if (spreadDelta > 0 && game.opening_spread !== undefined) {
+                signalSide = currentSpread < game.opening_spread ? 'home' : 'away';
+            }
+
+            // Delta Category
+            const absDelta = Math.abs(spreadDelta);
+            let deltaCategory = 'Small_Move';
+            if (absDelta >= 3 && absDelta <= 8) deltaCategory = 'Sweet_Spot';
+            else if (absDelta > 8 && absDelta <= 15) deltaCategory = 'Market_Correction';
+            else if (absDelta > 15) deltaCategory = 'System_Shock';
+
+            // Cross-Zero Detection
+            const openingSpreadVal = game.opening_spread ?? currentSpread;
+            const isCrossZero = (openingSpreadVal > 0 && currentSpread < 0) || (openingSpreadVal < 0 && currentSpread > 0);
+
+            // Conference Type
+            const hConf = confMap.get(game.home_team.toLowerCase());
+            const aConf = confMap.get(game.away_team.toLowerCase());
+            let confType = 'Low-Major';
+            if (hConf && aConf) {
+                if (highMajors.includes(hConf) || highMajors.includes(aConf)) confType = 'Major';
+                else if (midMajors.includes(hConf) || midMajors.includes(aConf)) confType = 'Mid-Major';
+            }
+
+            // Golden Rule: Sweet Spot + Low-Major + (Handle Gap > 30% - implemented in confidence/rendering)
+            // For DB, we mark the structural part of the Golden Rule
+            const isGoldenRule = deltaCategory === 'Sweet_Spot' && confType === 'Low-Major';
+
             const { data: gameRecord, error: gameError } = await supabase
                 .from('games')
                 .upsert({
                     external_id: game.id,
                     teams: teamsString,
                     commence_time: game.commence_time,
-                    home_rank: getTeamRank(game.home_team),
-                    away_rank: getTeamRank(game.away_team),
-                    // signal_side and confidence_score are usually updated by the movement analyzer
-                    // but we ensure columns exist.
-                    closing_spread: currentSpread
+                    home_rank: hRank,
+                    away_rank: aRank,
+                    signal_side: signalSide,
+                    confidence_score: confidence,
+                    closing_spread: currentSpread,
+                    market_maker_count: mmCount,
+                    handle_pct_home: handlePctHome,
+                    ticket_pct_home: ticketPctHome,
+                    delta_category: deltaCategory,
+                    is_cross_zero: isCrossZero,
+                    is_golden_rule: isGoldenRule,
+                    conference_type: confType
                 }, { onConflict: 'external_id' })
                 .select('id')
                 .single();
@@ -303,6 +377,7 @@ interface SportsDataIOOdds {
 interface SportsDataIOGame {
     GameID: number;
     DateTime: string;
+    DateTimeUTC?: string;
     HomeTeamName: string;
     AwayTeamName: string;
     PregameOdds: SportsDataIOOdds[];
@@ -405,7 +480,7 @@ function mapSportsDataIOToStandard(response: SportsDataIOGame[]): StandardGame[]
 
         return {
             id: `sportsdata-${item.GameID || Math.random()}`,
-            commence_time: item.DateTime || new Date().toISOString(),
+            commence_time: item.DateTimeUTC || (item.DateTime && !item.DateTime.includes('Z') ? `${item.DateTime}Z` : item.DateTime) || new Date().toISOString(),
             home_team: item.HomeTeamName || 'Unknown Home',
             away_team: item.AwayTeamName || 'Unknown Away',
             bookmakers: bookmakers

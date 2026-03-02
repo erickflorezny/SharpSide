@@ -12,66 +12,73 @@ export async function GET() {
         // 1. Fetch all games with results
         const { data: games, error: gamesError } = await supabase
             .from('games')
-            .select('confidence_score, result_win, game_status')
+            .select('confidence_score, result_win, game_status, home_rank, away_rank')
             .eq('game_status', 'final')
             .not('result_win', 'is', null);
 
         if (gamesError) throw gamesError;
 
-        // 2. Aggregate performance in-code (fallback for missing SQL view)
+        // 2. Fragment analysis: Ranked vs Unranked
         const strongSignals = games.filter(g => g.confidence_score >= 80);
-        const totalStrongSignals = strongSignals.length;
-        const totalStrongWins = strongSignals.filter(g => g.result_win === true).length;
-        const avgStrongWinRate = totalStrongSignals > 0 ? totalStrongWins / totalStrongSignals : 0;
+        const rankedStrong = strongSignals.filter(g => (g.home_rank && g.home_rank <= 25) || (g.away_rank && g.away_rank <= 25));
+        const unrankedStrong = strongSignals.filter(g => !((g.home_rank && g.home_rank <= 25) || (g.away_rank && g.away_rank <= 25)));
 
-        let adjustment = 0;
-        let message = "Weights are optimal.";
+        const calcAccuracy = (list: any[]) => {
+            if (list.length === 0) return 0;
+            return list.filter(g => g.result_win === true).length / list.length;
+        };
 
-        if (totalStrongSignals >= 5) { // Only adjust if we have a decent sample size
-            if (avgStrongWinRate < 0.50) {
-                adjustment = -1.0; // Decrease multiplier (be stricter) - Larger jump for first learning
-                message = `Strong bets underperforming (${(avgStrongWinRate * 100).toFixed(1)}%). Tightening filters.`;
-            } else if (avgStrongWinRate > 0.60) {
-                adjustment = 0.5; // Increase multiplier (be more inclusive)
-                message = `Strong bets overperforming (${(avgStrongWinRate * 100).toFixed(1)}%). Loosening filters.`;
+        const overallWinRate = calcAccuracy(strongSignals);
+        const rankedWinRate = calcAccuracy(rankedStrong);
+        const unrankedWinRate = calcAccuracy(unrankedStrong);
+
+        let adjustments: { category: string, delta: number }[] = [];
+
+        // TIGHTER CALIBRATION: Target > 60% win rate for "Strong" label
+        // If ranked is failing, be much stricter with Top 25 bonus
+        if (rankedStrong.length >= 3) {
+            if (rankedWinRate < 0.60) {
+                adjustments.push({ category: 'top_25_bonus', delta: -1.5 });
+            } else if (rankedWinRate > 0.75) {
+                adjustments.push({ category: 'top_25_bonus', delta: 0.5 });
             }
-        } else {
-            message = "Insufficient data for calibration. Need at least 5 completed strong signals.";
         }
 
-        if (adjustment !== 0) {
-            // Update the spread_multiplier in the database
-            const { data: currentWeight, error: weightError } = await supabase
+        // Generic spread multiplier adjustment
+        if (strongSignals.length >= 5) {
+            if (overallWinRate < 0.55) {
+                adjustments.push({ category: 'spread_multiplier', delta: -1.0 });
+            } else if (overallWinRate > 0.65) {
+                adjustments.push({ category: 'spread_multiplier', delta: 0.5 });
+            }
+        }
+
+        // 3. Apply Adjustments
+        for (const adj of adjustments) {
+            const { data: weightRecord } = await supabase
                 .from('signal_weights')
                 .select('weight')
-                .eq('category', 'spread_multiplier')
+                .eq('category', adj.category)
                 .maybeSingle();
 
-            const current = currentWeight?.weight || 10;
-            const newWeight = Math.max(5, Math.min(20, current + adjustment));
+            const current = weightRecord?.weight || (adj.category === 'top_25_bonus' ? 10 : 10);
+            const newWeight = Math.max(2, Math.min(25, current + adj.delta));
 
-            if (weightError || !currentWeight) {
-                // Upsert if not exists
-                await supabase.from('signal_weights').upsert({
-                    category: 'spread_multiplier',
-                    weight: newWeight,
-                    last_tuned: new Date().toISOString()
-                }, { onConflict: 'category' });
-            } else {
-                await supabase
-                    .from('signal_weights')
-                    .update({ weight: newWeight, last_tuned: new Date().toISOString() })
-                    .eq('category', 'spread_multiplier');
-            }
+            await supabase.from('signal_weights').upsert({
+                category: adj.category,
+                weight: newWeight,
+                last_tuned: new Date().toISOString()
+            }, { onConflict: 'category' });
         }
 
         return NextResponse.json({
             success: true,
-            message,
+            message: adjustments.length > 0 ? `Tuned ${adjustments.length} weights.` : "Weights stable.",
             stats: {
-                avgStrongWinRate,
-                totalStrongSignals,
-                adjustmentMade: adjustment
+                overallWinRate: Math.round(overallWinRate * 100),
+                rankedWinRate: Math.round(rankedWinRate * 100),
+                totalSignals: strongSignals.length,
+                adjustmentsMade: adjustments.length
             }
         });
 

@@ -9,7 +9,7 @@ export async function GET() {
         const supabase = await createClient();
 
         const response = await fetch(
-            'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard',
+            'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=50&limit=1000',
             { next: { revalidate: 0 } }
         );
 

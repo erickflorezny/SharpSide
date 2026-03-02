@@ -90,7 +90,14 @@ export function AutoParlayBuilder({ signals }: AutoParlayBuilderProps) {
     const [legCount, setLegCount] = useState(3);
     const [strongOnly, setStrongOnly] = useState(true);
 
-    const sharpSignals = signals.filter(s => Math.abs(s.spread_delta) >= 1.0);
+    const upcomingSignals = signals.filter(s => {
+        const isUpcoming = s.game_status === 'upcoming' || s.game_status === null;
+        // Buffer of 5 mins to account for clock drift
+        const isFuture = new Date(s.commence_time).getTime() > (Date.now() - 5 * 60 * 1000);
+        return isUpcoming && isFuture;
+    });
+
+    const sharpSignals = upcomingSignals.filter(s => Math.abs(s.spread_delta) >= 1.0);
     const filteredSignals = strongOnly ? sharpSignals.filter(s => s.confidence_score >= 80) : sharpSignals;
     const maxLegs = Math.min(filteredSignals.length, 8);
 

@@ -5,6 +5,7 @@ import { Info, ArrowRight, Newspaper, Minus } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { AddToParlayButton } from '@/components/parlay/AddToParlayButton';
 import { generateInsights } from '@/lib/insights';
+import { cn } from '@/lib/utils';
 
 export function GameCard({ game }: { game: SharpSignalGame }) {
     const isSharp = Math.abs(game.spread_delta) >= 1.0;
@@ -22,11 +23,43 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
     // The sharp side is the OPPOSITE of the public side
     const sharpSide = game.public_sentiment_side === 'home' ? 'away' : 'home';
     const sharpTeam = sharpSide === 'home' ? homeTeam : awayTeam;
-    const publicTeam = sharpSide === 'home' ? awayTeam : homeTeam;
     const insights = isSharp ? generateInsights(game) : [];
 
+    // Live Value Calculation: (My Team Score - Opponent Score) + Spread received
+    let liveValue = null;
+    if (game.game_status === 'live' && game.home_score !== null && game.away_score !== null) {
+        const myScore = sharpSide === 'home' ? game.home_score : game.away_score;
+        const oppScore = sharpSide === 'home' ? game.away_score : game.home_score;
+        const mySpread = sharpSide === 'home' ? game.current_spread : -game.current_spread;
+        liveValue = (myScore - oppScore) + mySpread;
+    }
+
+    // New derived states for badges and styling
+    const hasConsensus = game.market_maker_count >= 3;
+
+    // Handle % vs Ticket % Gap (The "Whale" Factor)
+    // We compare the handle/ticket for the side the sharps are on
+    const signalHandle = sharpSide === 'home' ? (game.handle_pct_home ?? 0) : (100 - (game.handle_pct_home ?? 100));
+    const signalTickets = sharpSide === 'home' ? (game.ticket_pct_home ?? 0) : (100 - (game.ticket_pct_home ?? 100));
+    const handleGap = signalHandle - signalTickets;
+
+    const isWhaleAlert = handleGap >= 30; // 30% more money than bets
+    const isSweetSpot = game.delta_category === 'Sweet_Spot';
+    const isSmallSchool = game.conference_type === 'Low-Major';
+
+    // The Golden Rule: Sweet Spot + Small School + Whale Alert
+    const isGoldenRule = isSweetSpot && isSmallSchool && (isWhaleAlert || game.is_golden_rule);
+
+    const isHighConfidence = game.confidence_score >= 85 || isGoldenRule;
+    const isCrossZero = game.is_cross_zero;
+
     return (
-        <Card className={`relative overflow-hidden transition-all duration-200 border shadow-sm ${isSharp ? 'border-emerald-500/30 bg-zinc-900/40' : 'border-border/50 bg-background hover:border-primary/50'} `}>
+        <Card className={cn(
+            "relative overflow-hidden transition-all duration-200 border shadow-sm",
+            isSharp ? 'border-emerald-500/30 bg-zinc-900/40' : 'border-border/50 bg-background hover:border-primary/50',
+            isHighConfidence && "border-emerald-500/30 bg-emerald-500/[0.02] shadow-[0_0_20px_rgba(16,185,129,0.05)]",
+            isGoldenRule && "border-amber-500/50 bg-amber-500/[0.03] shadow-[0_0_25px_rgba(245,158,11,0.1)] ring-1 ring-amber-500/20"
+        )}>
             {isSharp && (
                 <div className="absolute top-0 right-0 w-24 h-24 pointer-events-none">
                     <div className="absolute transform translate-x-10 -translate-y-10 rotate-45 w-24 h-24 bg-emerald-500/10 blur-2xl"></div>
@@ -36,29 +69,43 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
             <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
                     <div>
-                        <CardDescription className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
-                            {new Date(game.commence_time).toLocaleString(undefined, {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                hour12: true
-                            }).replace(',', ' •')}
-                            {game.game_status === 'live' && (
-                                <span className="flex items-center gap-1 text-[10px] text-red-400 font-bold">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
-                                    LIVE
-                                </span>
+                        <div className="flex items-center gap-2">
+                            <CardDescription className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+                                {new Date(game.commence_time).toLocaleString(undefined, {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: 'numeric',
+                                    minute: '2-digit',
+                                    hour12: true
+                                }).replace(',', ' •')}
+                                {game.game_status === 'live' && (
+                                    <span className="flex items-center gap-1 text-[10px] text-red-400 font-bold">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+                                        LIVE
+                                    </span>
+                                )}
+                                {game.game_status === 'final' && (
+                                    <span className="text-[10px] text-muted-foreground/70 font-bold uppercase tracking-tighter">FINAL</span>
+                                )}
+                            </CardDescription>
+
+                            {liveValue !== null && (
+                                <Badge variant="outline" className={`h-4 text-[9px] font-black border-none px-1.5 py-0 ${liveValue >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'} `}>
+                                    {liveValue >= 0 ? `+${liveValue.toFixed(1)} VALUE` : `${liveValue.toFixed(1)} TRAILING`}
+                                </Badge>
                             )}
-                            {game.game_status === 'final' && (
-                                <span className="text-[10px] text-muted-foreground/70 font-bold">FINAL</span>
-                            )}
-                        </CardDescription>
+                        </div>
+
                         <div className="mt-1 space-y-0.5 max-w-xs">
                             <div className="flex items-center gap-1.5 text-sm font-bold tracking-tight truncate">
-                                {game.away_rank && game.away_rank <= 25 && (
-                                    <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0 leading-tight">#{game.away_rank}</span>
-                                )}
+                                <div className="flex items-center gap-1">
+                                    {game.away_rank && game.away_rank <= 25 && (
+                                        <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0 leading-tight">#{game.away_rank}</span>
+                                    )}
+                                    {game.away_eff && (
+                                        <span className="text-[9px] font-mono text-zinc-500 bg-zinc-800/40 border border-zinc-700/50 rounded px-1 py-0 leading-tight" title={`Power Rank: #${game.away_eff.rank}`}>TR:{game.away_eff.rank}</span>
+                                    )}
+                                </div>
                                 <span className="truncate">{awayTeam}</span>
                                 {game.away_score !== null && game.away_score !== undefined && (
                                     <span className={`ml-auto font-mono text-base ${game.game_status === 'final' && game.away_score > (game.home_score ?? 0) ? 'text-emerald-400' : 'text-foreground'} `}>
@@ -68,9 +115,14 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                             </div>
                             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                                 <span className="text-[10px]">@</span>
-                                {game.home_rank && game.home_rank <= 25 && (
-                                    <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0 leading-tight">#{game.home_rank}</span>
-                                )}
+                                <div className="flex items-center gap-1">
+                                    {game.home_rank && game.home_rank <= 25 && (
+                                        <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0 leading-tight">#{game.home_rank}</span>
+                                    )}
+                                    {game.home_eff && (
+                                        <span className="text-[9px] font-mono text-zinc-500 bg-zinc-800/40 border border-zinc-700/50 rounded px-1 py-0 leading-tight" title={`Power Rank: #${game.home_eff.rank}`}>TR:{game.home_eff.rank}</span>
+                                    )}
+                                </div>
                                 <span className="truncate">{homeTeam}</span>
                                 {game.home_score !== null && game.home_score !== undefined && (
                                     <span className={`ml-auto font-mono text-base font-bold ${game.game_status === 'final' && (game.home_score ?? 0) > (game.away_score ?? 0) ? 'text-emerald-400' : 'text-foreground'} `}>
@@ -86,15 +138,18 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                         let badgeClass: string;
 
                         // Confidence-based labeling
-                        if (game.confidence_score >= 85) {
-                            label = '🚀 Strong Bet';
+                        if (game.potential_head_fake) {
+                            label = '🕵️ Swing Signal';
+                            badgeClass = 'bg-indigo-500/20 text-indigo-400 border-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.1)]';
+                        } else if (game.is_late_steam) {
+                            label = '🚀 Late Steam';
+                            badgeClass = 'bg-sky-500/20 text-sky-400 border-sky-500/20 shadow-[0_0_10px_rgba(14,165,233,0.1)]';
+                        } else if (game.confidence_score >= 85) {
+                            label = '🔥 Strong Bet';
                             badgeClass = 'bg-amber-500/20 text-amber-400 border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.1)]';
                         } else if (absDelta >= 2) {
-                            label = '🔥 Strong RLM';
+                            label = '📈 Strong RLM';
                             badgeClass = 'bg-orange-500/20 text-orange-400 border-orange-500/20';
-                        } else if (absDelta >= 1.5) {
-                            label = '⚡ Sharp';
-                            badgeClass = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20';
                         } else {
                             label = '📊 Sharp';
                             badgeClass = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20';
@@ -163,9 +218,29 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                     <Badge variant="default" className={`${badgeClass} hover:opacity-80 flex gap-1 items-center px-1.5 py-0 text-[10px] font-bold h-5`}>
                                         <span>{label}</span>
                                     </Badge>
+                                    {game.market_maker_count >= 3 && (
+                                        <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] h-5">🏛️ Consensus</Badge>
+                                    )}
+                                    {isWhaleAlert && (
+                                        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/20 animate-pulse text-[10px] h-5">💰 Whale Alert</Badge>
+                                    )}
+                                    {isGoldenRule && (
+                                        <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.2)] text-[10px] h-5">🏆 Golden Rule</Badge>
+                                    )}
+                                    {isSweetSpot && !isGoldenRule && (
+                                        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/20 text-[10px] h-5">🎯 Sweet Spot</Badge>
+                                    )}
+                                    {isCrossZero && (
+                                        <Badge className="bg-indigo-500/20 text-indigo-400 border-indigo-500/20 text-[10px] h-5">🔄 Zero Flip</Badge>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <span className="text-[9px] font-mono text-muted-foreground/60">Δ{absDelta} pts</span>
+                                    {game.last_move_time && (
+                                        <span className="text-[8px] font-mono text-muted-foreground/40 italic">
+                                            ({Math.floor((Date.now() - new Date(game.last_move_time).getTime()) / (1000 * 60))}m ago)
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         );
@@ -313,7 +388,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                 </PopoverTrigger>
                                 <PopoverContent side="top" className="max-w-[280px] text-xs leading-relaxed p-3">
                                     <p className="mb-1.5"><strong>{suggestedBet}:</strong> {suggestedReason}</p>
-                                    <p className="text-muted-foreground/70">Public is on {publicTeam}. Sharps are going the other way.</p>
+                                    <p className="text-muted-foreground/70">Public is on the other side ({sharpSide === 'home' ? awayTeam : homeTeam}). Sharps are going the other way.</p>
                                 </PopoverContent>
                             </Popover>
                             <AddToParlayButton leg={{
