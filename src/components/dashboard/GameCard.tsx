@@ -218,7 +218,7 @@ export function GameCard({ game }: { game: SharpSignalGame }) {
                                     <Badge variant="default" className={`${badgeClass} hover:opacity-80 flex gap-1 items-center px-1.5 py-0 text-[10px] font-bold h-5`}>
                                         <span>{label}</span>
                                     </Badge>
-                                    {game.market_maker_count >= 3 && (
+                                    {hasConsensus && (
                                         <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] h-5">🏛️ Consensus</Badge>
                                     )}
                                     {isWhaleAlert && (

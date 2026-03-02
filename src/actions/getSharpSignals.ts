@@ -53,27 +53,6 @@ interface RawSnapshot {
     timestamp: string;
 }
 
-interface RawGame {
-    id: string;
-    teams: string;
-    commence_time: string;
-    home_rank: number | null;
-    away_rank: number | null;
-    home_score?: number | null;
-    away_score?: number | null;
-    game_status?: string | null;
-    confidence_score?: number | null;
-    result_win?: boolean | null;
-    market_maker_count?: number | null;
-    handle_pct_home?: number | null;
-    ticket_pct_home?: number | null;
-    delta_category?: string | null;
-    is_cross_zero?: boolean | null;
-    is_golden_rule?: boolean | null;
-    conference_type?: string | null;
-    odds_snapshots: RawSnapshot[];
-}
-
 /**
  * Normalizes team names for Torvik matching.
  */
@@ -180,7 +159,7 @@ export async function getSharpSignals(filters?: {
         if (!game.odds_snapshots || game.odds_snapshots.length === 0) continue;
 
         const sortedSnapshots = [...game.odds_snapshots].sort(
-            (a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            (a: RawSnapshot, b: RawSnapshot) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
 
         const openingSnapshot = sortedSnapshots.find(s => s.is_opening_line) || sortedSnapshots[0];
@@ -202,9 +181,7 @@ export async function getSharpSignals(filters?: {
 
             // Head Fake & Late Steam Analysis
             let peakDelta = 0;
-            let peakTime = sortedSnapshots[0].timestamp;
             let lastSignificantMoveTime = sortedSnapshots[0].timestamp;
-            let reachesPeakEarly = false;
             let hasSignificantReversal = false;
 
             for (let i = 1; i < sortedSnapshots.length; i++) {
@@ -214,7 +191,6 @@ export async function getSharpSignals(filters?: {
                 // Track peak move magnitude (farthest from opening)
                 if (Math.abs(deltaFromOpen) > Math.abs(peakDelta)) {
                     peakDelta = deltaFromOpen;
-                    peakTime = snap.timestamp;
                 }
 
                 // Track last significant move (>= 0.5 pts)

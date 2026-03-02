@@ -23,16 +23,15 @@ export async function GET() {
         const rankedStrong = strongSignals.filter(g => (g.home_rank && g.home_rank <= 25) || (g.away_rank && g.away_rank <= 25));
         const unrankedStrong = strongSignals.filter(g => !((g.home_rank && g.home_rank <= 25) || (g.away_rank && g.away_rank <= 25)));
 
-        const calcAccuracy = (list: any[]) => {
+        const calcAccuracy = (list: { result_win?: boolean | null }[]) => {
             if (list.length === 0) return 0;
             return list.filter(g => g.result_win === true).length / list.length;
         };
 
         const overallWinRate = calcAccuracy(strongSignals);
         const rankedWinRate = calcAccuracy(rankedStrong);
-        const unrankedWinRate = calcAccuracy(unrankedStrong);
 
-        let adjustments: { category: string, delta: number }[] = [];
+        const adjustments: { category: string, delta: number }[] = [];
 
         // TIGHTER CALIBRATION: Target > 60% win rate for "Strong" label
         // If ranked is failing, be much stricter with Top 25 bonus

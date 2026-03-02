@@ -10,7 +10,6 @@ const SCORE_SYNC_INTERVAL = 60 * 1000;      // 60 seconds
 
 export function AutoRefresh() {
     const router = useRouter();
-    const [lastOddsSync, setLastOddsSync] = useState<string>('Just now');
     const [lastScoreSync, setLastScoreSync] = useState<string>('Just now');
     const [isSyncingOdds, setIsSyncingOdds] = useState(false);
     const [isSyncingScores, setIsSyncingScores] = useState(false);
@@ -46,7 +45,6 @@ export function AutoRefresh() {
 
             if (oddsRes.ok || scoresRes.ok) {
                 const now = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-                setLastOddsSync(now);
                 setLastScoreSync(now);
                 router.refresh();
             }

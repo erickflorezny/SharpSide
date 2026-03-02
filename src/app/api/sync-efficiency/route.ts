@@ -13,7 +13,8 @@ export async function GET() {
             throw new Error(`Torvik API failed: ${response.statusText}`);
         }
 
-        const data: any[][] = await response.json();
+        type TorvikTeam = (string | number)[];
+        const data: TorvikTeam[] = await response.json();
 
         // 2. Parse and Upsert
         const upsertData = data.map(team => ({
@@ -51,8 +52,9 @@ export async function GET() {
             timestamp: new Date().toISOString()
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Efficiency Sync Error:', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
     }
 }

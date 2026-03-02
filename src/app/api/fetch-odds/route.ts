@@ -192,8 +192,9 @@ export async function GET() {
 
             // Betting Percentages (Handle vs Ticket Gap)
             // Note: These require the betting_percentages add-on in The Odds API
-            const handlePctHome = (homeOutcome as any).betting_percentages?.handle ?? null;
-            const ticketPctHome = (homeOutcome as any).betting_percentages?.tickets ?? null;
+            const outcomeWithPercentages = homeOutcome as { betting_percentages?: { handle?: number; tickets?: number } };
+            const handlePctHome = outcomeWithPercentages.betting_percentages?.handle ?? null;
+            const ticketPctHome = outcomeWithPercentages.betting_percentages?.tickets ?? null;
 
             // Re-calculate confidence with dynamic weights
             let confidence = BASE_SCORE;
